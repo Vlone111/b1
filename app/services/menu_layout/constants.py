@@ -30,7 +30,7 @@ DEFAULT_MENU_CONFIG: dict[str, Any] = {
         },
         {
             'id': 'subscription_traffic_row',
-            'buttons': ['balance', 'support'],
+            'buttons': ['balance', 'settings'],
             'conditions': None,
             'max_per_row': 2,
         },
@@ -62,12 +62,6 @@ DEFAULT_MENU_CONFIG: dict[str, Any] = {
             'id': 'contests_row',
             'buttons': ['contests'],
             'conditions': {'contests_visible': True},
-            'max_per_row': 2,
-        },
-        {
-            'id': 'faq_settings_row',
-            'buttons': ['faq', 'settings'],
-            'conditions': None,
             'max_per_row': 2,
         },
         {

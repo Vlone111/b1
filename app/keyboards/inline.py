@@ -327,7 +327,7 @@ def get_language_selection_keyboard(
 
     if include_back:
         texts = get_texts(language)
-        buttons.append([InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')])
+        buttons.append([InlineKeyboardButton(text=texts.BACK, callback_data='menu_settings')])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -729,16 +729,6 @@ def get_main_menu_keyboard(
             InlineKeyboardButton(text=texts.t('CONTESTS_BUTTON', '🎲 Конкурсы'), callback_data='contests_menu')
         )
 
-    try:
-        from app.services.support_settings_service import SupportSettingsService
-
-        support_enabled = SupportSettingsService.is_support_menu_enabled()
-    except Exception:
-        support_enabled = settings.SUPPORT_MENU_ENABLED
-
-    if support_enabled:
-        paired_buttons.append(InlineKeyboardButton(text=texts.MENU_SUPPORT, callback_data='menu_support'))
-
     # Добавляем кнопку Настройки (вместо отдельных кнопок Язык и Инфо)
     paired_buttons.append(
         InlineKeyboardButton(
@@ -782,7 +772,7 @@ def get_info_menu_keyboard(
 
     buttons: list[list[InlineKeyboardButton]] = []
 
-    # FAQ больше не добавляем в info-меню - кнопка FAQ теперь только в главном меню
+    # FAQ и поддержка перемещены в меню Настройки
 
     if show_promo_groups:
         buttons.append(
@@ -844,13 +834,13 @@ def get_info_menu_keyboard(
             ]
         )
 
-    buttons.append([InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')])
+    buttons.append([InlineKeyboardButton(text=texts.BACK, callback_data='menu_settings')])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def get_settings_menu_keyboard(language: str = DEFAULT_LANGUAGE) -> InlineKeyboardMarkup:
-    """Клавиатура для меню настроек с кнопками Язык и Инфо."""
+    """Клавиатура для меню настроек с кнопками Язык, Инфо, FAQ и Поддержка."""
     texts = get_texts(language)
 
     buttons: list[list[InlineKeyboardButton]] = []
@@ -875,6 +865,34 @@ def get_settings_menu_keyboard(language: str = DEFAULT_LANGUAGE) -> InlineKeyboa
             )
         ]
     )
+
+    # Кнопка FAQ
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                text=texts.t('MENU_FAQ', '❓ FAQ'),
+                callback_data='menu_faq',
+            )
+        ]
+    )
+
+    # Кнопка Поддержка
+    try:
+        from app.services.support_settings_service import SupportSettingsService
+
+        support_enabled = SupportSettingsService.is_support_menu_enabled()
+    except Exception:
+        support_enabled = settings.SUPPORT_MENU_ENABLED
+
+    if support_enabled:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=texts.MENU_SUPPORT,
+                    callback_data='menu_support',
+                )
+            ]
+        )
 
     # Кнопка Назад
     buttons.append([InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')])
@@ -920,7 +938,7 @@ def get_faq_list_keyboard(language: str = DEFAULT_LANGUAGE, faq_pages=None) -> I
             )
 
     # Кнопка Назад
-    buttons.append([InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')])
+    buttons.append([InlineKeyboardButton(text=texts.BACK, callback_data='menu_settings')])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -1941,7 +1959,7 @@ def get_support_keyboard(language: str = DEFAULT_LANGUAGE) -> InlineKeyboardMark
                 )
             ]
         )
-    rows.append([InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')])
+    rows.append([InlineKeyboardButton(text=texts.BACK, callback_data='menu_settings')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
