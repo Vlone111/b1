@@ -539,7 +539,7 @@ async def show_subscription_info(callback: types.CallbackQuery, db_user: User, d
 
         message += '\n\n' + texts.t(
             'SUBSCRIPTION_CONNECT_LINK_SECTION',
-            '🔗 <b>Ссылка для подключения:</b>\n{subscription_url}',
+            '🔗 <blockquote>Ссылка для подключения: \n"{subscription_url}"<blockquote>',
         ).format(subscription_url=subscription_link_display)
         message += '\n\n' + texts.t(
             'SUBSCRIPTION_CONNECT_LINK_PROMPT',
@@ -640,15 +640,15 @@ async def get_subscription_info_text_for_start(
     subscription_link = get_display_subscription_link(subscription)
     link_str = ''
     if subscription_link:
-        link_str = f'🔗 Скопируйте ссылку и добавьте в ваше VPN приложение:\n{subscription_link}'
+        link_str = f'<blockquote>🔗 Скопируйте ссылку и добавьте в ваше VPN приложение:\n<code>{subscription_link}</code></blockquote>'
 
     # Итоговый текст с форматированием в виде блоков
     msg = f"""👤 {db_user.full_name}
 
-📦 Подписка: {tariff_name}
+<blockquote>📦 Подписка: {tariff_name}
 📅 Действует до: {end_date} (ост. {days_left} дн.)
 📈 Трафик: {traffic_str}
-📱 Устройства: {devices_str}"""
+📱 Устройства: {devices_str}</blockquote>"""
     
     if connected_devices:
         msg += f"\n\n{connected_devices}"
