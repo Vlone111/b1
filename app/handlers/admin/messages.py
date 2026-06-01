@@ -743,6 +743,7 @@ async def select_broadcast_target(callback: types.CallbackQuery, db_user: User, 
         'expiring': 'С истекающей подпиской',
         'expired': 'С истекшей подпиской',
         'active_zero': 'Активная подписка, трафик 0 ГБ',
+        'lapsed': 'Бывшие подписчики (подписка истекла)',
         'trial_zero': 'Триальная подписка, трафик 0 ГБ',
     }
 
@@ -1733,6 +1734,29 @@ async def get_target_users_count(db: AsyncSession, target: str) -> int:
         result = await db.execute(query)
         return result.scalar() or 0
 
+    if target == 'lapsed':
+    # Была любая подписка (триал или платная), но сейчас нет активной
+        subquery_active = (
+            select(Subscription.id)
+            .where(
+                Subscription.user_id == User.id,
+                Subscription.status == SubscriptionStatus.ACTIVE.value,
+            )
+            .exists()
+        )
+        subquery_any = (
+            select(Subscription.id)
+            .where(Subscription.user_id == User.id)
+            .exists()
+        )
+        query = select(sql_func.count(User.id)).where(
+            base_filter,
+            subquery_any,       # хоть одна подписка была
+            ~subquery_active,   # но сейчас нет активной
+        )
+        result = await db.execute(query)
+        return result.scalar() or 0
+
     return 0
 
 
@@ -1919,7 +1943,34 @@ async def get_target_users(db: AsyncSession, target: str) -> list:
             if user.subscription and user.subscription.is_active and user.subscription.tariff_id == tariff_id
         ]
 
-    return []
+    if target == 'lapsed':
+        # Была любая подписка, но сейчас нет активной
+        subquery_active = (
+            select(Subscription.id)
+            .where(
+                Subscription.user_id == User.id,
+                Subscription.status == SubscriptionStatus.ACTIVE.value,
+            )
+            .exists()
+        )
+        subquery_any = (
+            select(Subscription.id)
+            .where(Subscription.user_id == User.id)
+            .exists()
+        )
+        stmt = (
+            select(User)
+            .where(
+                User.status == UserStatus.ACTIVE.value,
+                subquery_any,
+                ~subquery_active,
+            )
+            .distinct()
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    return []  # уже есть
 
 
 async def get_custom_users_count(db: AsyncSession, criteria: str) -> int:
@@ -2029,6 +2080,7 @@ def get_target_name(target_type: str) -> str:
         'custom_inactive_week': 'Неактивные 7+ дней',
         'custom_inactive_month': 'Неактивные 30+ дней',
         'custom_referrals': 'Через рефералов',
+        'lapsed': 'Бывшие подписчики (подписка истекла)',
         'custom_direct': 'Прямая регистрация',
     }
     # Обработка фильтра по тарифу

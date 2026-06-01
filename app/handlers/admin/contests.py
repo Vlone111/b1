@@ -63,7 +63,7 @@ def _format_contest_summary(contest, texts, tz: ZoneInfo) -> str:
 
     period = f'{format_local_datetime(start_local, "%d.%m %H:%M")} — {format_local_datetime(end_local, "%d.%m %H:%M")} ({tz.key})'
 
-    summary_time = format_local_datetime(contest.daily_summary_time, '%H:%M') if contest.daily_summary_time else '12:00'
+    summary_time = contest.daily_summary_time.strftime('%H:%M') if contest.daily_summary_time else '12:00'
     summary_times = contest.daily_summary_times or summary_time
     parts = [
         f'{status}',

@@ -748,7 +748,6 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
         # Try to apply referral code if user doesn't have a referrer yet and hasn't made first topup
         if referral_code and not user.referred_by_id and not user.has_made_first_topup:
             from app.database.crud.user import get_user_by_referral_code
-            from app.services.referral_service import process_referral_registration
 
             referrer = await get_user_by_referral_code(db, referral_code)
             if referrer and referrer.id != user.id:
@@ -1455,7 +1454,6 @@ async def complete_registration_from_callback(callback: types.CallbackQuery, sta
         # Try to apply referral code if user doesn't have a referrer yet and hasn't made first topup
         if data.get('referral_code') and not existing_user.referred_by_id and not existing_user.has_made_first_topup:
             from app.database.crud.user import get_user_by_referral_code
-            from app.services.referral_service import process_referral_registration
 
             referral_code = data.get('referral_code')
             referrer = await get_user_by_referral_code(db, referral_code)
@@ -1801,7 +1799,6 @@ async def complete_registration(message: types.Message, state: FSMContext, db: A
         # Try to apply referral code if user doesn't have a referrer yet and hasn't made first topup
         if data.get('referral_code') and not existing_user.referred_by_id and not existing_user.has_made_first_topup:
             from app.database.crud.user import get_user_by_referral_code
-            from app.services.referral_service import process_referral_registration
 
             referral_code = data.get('referral_code')
             referrer = await get_user_by_referral_code(db, referral_code)
@@ -2321,10 +2318,23 @@ async def get_main_menu_text(user, texts, db: AsyncSession):
     try:
         random_message = await get_random_active_message(db)
         if random_message:
-            return _insert_random_message(base_text, random_message, action_prompt)
+            base_text = _insert_random_message(base_text, random_message, action_prompt)
 
     except Exception as e:
         logger.error('Ошибка получения случайного сообщения', error=e)
+
+    try:
+        from app.handlers.contests import build_main_menu_contest_block
+
+        contest_block = await build_main_menu_contest_block(db, getattr(user, 'id', None))
+        if contest_block:
+            base_text = f'{base_text}\n{contest_block}'
+    except Exception as contest_error:
+        logger.debug(
+            'Не удалось построить блок конкурса для главного меню',
+            user_id=getattr(user, 'id', None),
+            error=contest_error,
+        )
 
     return base_text
 
@@ -2341,10 +2351,19 @@ async def get_main_menu_text_simple(user_name, texts, db: AsyncSession):
     try:
         random_message = await get_random_active_message(db)
         if random_message:
-            return _insert_random_message(base_text, random_message, action_prompt)
+            base_text = _insert_random_message(base_text, random_message, action_prompt)
 
     except Exception as e:
         logger.error('Ошибка получения случайного сообщения', error=e)
+
+    try:
+        from app.handlers.contests import build_main_menu_contest_block
+
+        contest_block = await build_main_menu_contest_block(db, None)
+        if contest_block:
+            base_text = f'{base_text}\n{contest_block}'
+    except Exception as contest_error:
+        logger.debug('Не удалось построить блок конкурса для главного меню (simple)', error=contest_error)
 
     return base_text
 

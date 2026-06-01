@@ -257,6 +257,8 @@ class Settings(BaseSettings):
     # Конкурсы (глобальный флаг, будет расширяться под разные типы)
     CONTESTS_ENABLED: bool = False
     CONTESTS_BUTTON_VISIBLE: bool = False
+    # Скрывать кнопку "Конкурсы" в главном меню, когда нет ни одного активного конкурса
+    CONTESTS_BUTTON_HIDE_WHEN_EMPTY: bool = False
     # Для обратной совместимости со старыми конфигами
     REFERRAL_CONTESTS_ENABLED: bool = False
 

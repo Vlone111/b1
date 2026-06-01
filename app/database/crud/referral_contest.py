@@ -145,6 +145,27 @@ async def get_contests_for_events(
     return filtered
 
 
+async def has_active_referral_contest(db: AsyncSession) -> bool:
+    """True if any active contest covers now_utc (midnight end_at normalized to end-of-day)."""
+    now_utc = datetime.now(UTC)
+    result = await db.execute(
+        select(ReferralContest.start_at, ReferralContest.end_at).where(
+            and_(
+                ReferralContest.is_active.is_(True),
+                ReferralContest.start_at <= now_utc,
+                ReferralContest.end_at >= now_utc - timedelta(days=1),
+            )
+        )
+    )
+    for _start_at, end_at in result.all():
+        normalized_end = end_at
+        if end_at.hour == 0 and end_at.minute == 0 and end_at.second == 0:
+            normalized_end = end_at.replace(hour=23, minute=59, second=59, microsecond=999999)
+        if normalized_end >= now_utc:
+            return True
+    return False
+
+
 async def get_contests_for_summaries(db: AsyncSession) -> list[ReferralContest]:
     result = await db.execute(select(ReferralContest).where(ReferralContest.is_active.is_(True)))
     return list(result.scalars().all())

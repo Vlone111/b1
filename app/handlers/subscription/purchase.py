@@ -654,6 +654,20 @@ async def get_subscription_info_text_for_start(
         msg += f"\n\n{connected_devices}"
     if link_str:
         msg += f"\n\n{link_str}"
+
+    try:
+        from app.handlers.contests import build_main_menu_contest_block
+
+        contest_block = await build_main_menu_contest_block(db, db_user.id)
+        if contest_block:
+            msg += f'\n\n{contest_block}'
+    except Exception as contest_error:
+        logger.debug(
+            'Не удалось построить блок конкурса для start-карточки подписки',
+            user_id=db_user.id,
+            error=contest_error,
+        )
+
     return msg.strip()
 
 

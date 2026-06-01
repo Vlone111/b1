@@ -46,6 +46,23 @@ async def get_main_menu_keyboard_async(
     Если MENU_LAYOUT_ENABLED=True, использует конфигурацию из БД.
     Иначе делегирует в синхронную версию.
     """
+    has_active_contest = True
+    if (
+        settings.CONTESTS_ENABLED
+        and settings.CONTESTS_BUTTON_VISIBLE
+        and getattr(settings, 'CONTESTS_BUTTON_HIDE_WHEN_EMPTY', False)
+    ):
+        try:
+            from app.database.crud.referral_contest import has_active_referral_contest
+
+            has_active_contest = await has_active_referral_contest(db)
+        except Exception as contest_check_error:
+            logger.debug(
+                'Не удалось проверить активные конкурсы для меню',
+                error=contest_check_error,
+            )
+            has_active_contest = True
+
     if settings.MENU_LAYOUT_ENABLED:
         from app.services.menu_layout_service import MenuContext, MenuLayoutService
 
@@ -134,6 +151,7 @@ async def get_main_menu_keyboard_async(
             registration_days=registration_days,
             promo_group_id=promo_group_id,
             has_autopay=has_autopay,
+            has_active_contest=has_active_contest,
         )
 
         return await MenuLayoutService.build_keyboard(db, context)
@@ -151,6 +169,7 @@ async def get_main_menu_keyboard_async(
         has_saved_cart=has_saved_cart,
         is_moderator=is_moderator,
         custom_buttons=custom_buttons,
+        has_active_contest=has_active_contest,
     )
 
 
@@ -554,6 +573,7 @@ def get_main_menu_keyboard(
     *,
     is_moderator: bool = False,
     custom_buttons: list[InlineKeyboardButton] | None = None,
+    has_active_contest: bool = True,
 ) -> InlineKeyboardMarkup:
     texts = get_texts(language)
 
@@ -725,9 +745,10 @@ def get_main_menu_keyboard(
 
     # Добавляем кнопку конкурсов
     if settings.CONTESTS_ENABLED and settings.CONTESTS_BUTTON_VISIBLE:
-        paired_buttons.append(
-            InlineKeyboardButton(text=texts.t('CONTESTS_BUTTON', '🎲 Конкурсы'), callback_data='contests_menu')
-        )
+        if not getattr(settings, 'CONTESTS_BUTTON_HIDE_WHEN_EMPTY', False) or has_active_contest:
+            paired_buttons.append(
+                InlineKeyboardButton(text=texts.t('CONTESTS_BUTTON', '🏆 Конкурсы'), callback_data='contests_menu')
+            )
 
     # Добавляем кнопку Настройки (вместо отдельных кнопок Язык и Инфо)
     paired_buttons.append(

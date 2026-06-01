@@ -757,6 +757,8 @@ class MenuLayoutService:
         if conditions.get('contests_visible') is True:
             if not settings.CONTESTS_BUTTON_VISIBLE:
                 return False
+            if getattr(settings, 'CONTESTS_BUTTON_HIDE_WHEN_EMPTY', False) and not context.has_active_contest:
+                return False
 
         # support_enabled
         if conditions.get('support_enabled') is True:

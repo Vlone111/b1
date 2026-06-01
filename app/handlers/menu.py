@@ -1475,10 +1475,23 @@ async def get_main_menu_text(user, texts, db: AsyncSession):
     try:
         random_message = await get_random_active_message(db)
         if random_message:
-            return _insert_random_message(base_text, random_message, action_prompt)
+            base_text = _insert_random_message(base_text, random_message, action_prompt)
 
     except Exception as e:
         logger.error('Ошибка получения случайного сообщения', error=e)
+
+    try:
+        from app.handlers.contests import build_main_menu_contest_block
+
+        contest_block = await build_main_menu_contest_block(db, user.id)
+        if contest_block:
+            base_text = f'{base_text}\n{contest_block}'
+    except Exception as contest_error:
+        logger.debug(
+            'Не удалось построить блок конкурса для главного меню',
+            user_id=getattr(user, 'id', None),
+            error=contest_error,
+        )
 
     return base_text
 

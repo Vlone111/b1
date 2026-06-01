@@ -211,6 +211,7 @@ DEFAULT_MENU_CONFIG: dict[str, Any] = {
             'type': 'builtin',
             'builtin_id': 'contests',
             'text': {'ru': 'Конкурсы', 'en': 'Contests'},
+            'icon_custom_emoji_id':'5226431245918942763',
             'action': 'contests_menu',
             'enabled': True,
             'visibility': 'all',
@@ -380,7 +381,7 @@ BUILTIN_BUTTONS_INFO: list[dict[str, Any]] = [
     },
     {
         'id': 'contests',
-        'default_text': {'ru': '🎲 Конкурсы', 'en': '🎲 Contests'},
+        'default_text': {'ru': '🏆 Конкурсы', 'en': '🏆 Contests'},
         'callback_data': 'contests_menu',
         'default_conditions': {'contests_visible': True},
         'supports_dynamic_text': False,
