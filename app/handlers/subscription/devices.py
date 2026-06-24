@@ -1413,40 +1413,38 @@ async def handle_device_guide(callback: types.CallbackQuery, db_user: User, db: 
 
     # iOS custom guide
     if device_type == 'ios':
-        guide_text = f"""📱 <b>Как подключить VPN (Happ)</b>
+        guide_text = f"""📱 <b>Подключение VPN на iPhone (iOS)</b>
 
-<b>1. Установи приложение</b>
-Скачай Happ (Для Русского APPLEID):
-https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973
+⚠️ <b>Happ удалили из App Store.</b>
+• Если у тебя его ещё <b>нет</b> — ставь <b>INCY</b> (кнопка «Скачать INCY» ниже).
+• Если Happ <b>уже установлен</b> — можешь спокойно пользоваться им, инструкция тоже ниже.
 
-Скачай Happ (GLOBAL AppleID):
-https://apps.apple.com/app/id6504287215
-
-<b>2. Скопируй свою ссылку подписки</b>
+🔗 <b>Твоя ссылка подписки</b> (пригодится для обоих приложений):
 <code>{html_mod.escape(subscription_link)}</code>
 
-<b>3. Добавь её в приложение</b>
-Открой Happ
-Нажми «+» в правом верхнем углу
-Выбери «Буфер обмена» (ссылка вставится сама)
+━━━━━━━━━━━━━━━
+✅ <b>Вариант 1 — INCY (рекомендуем)</b>
 
-<b>4. Подключись</b>
-Выбери сервер
-Нажми большую кнопку подключения"""
+1. Установи приложение по кнопке «⬇️ Скачать INCY» ниже
+2. Скопируй ссылку подписки выше
+3. Открой INCY и нажми внизу <b>«Вставить»</b> — ссылка добавится сама
+4. Выбери сервер и нажми большую кнопку подключения
+
+━━━━━━━━━━━━━━━
+📦 <b>Вариант 2 — Happ (если он уже стоит)</b>
+
+1. Открой Happ
+2. Скопируй ссылку подписки выше
+3. Нажми <b>«+»</b> в правом верхнем углу → выбери <b>«Буфер обмена»</b> (ссылка вставится сама)
+4. Выбери сервер и нажми большую кнопку подключения"""
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text='⬇️ Скачать приложение',
-                        url='https://apps.apple.com/ru/app/happ-proxy-utility-plus/id6746188973',
+                        text='⬇️ Скачать INCY',
+                        url='https://apps.apple.com/app/incy/id6756943388',
                         style='primary',
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        text=' Другие приложения',
-                        callback_data='app_list_ios',
                     )
                 ],
                 [
@@ -1842,6 +1840,14 @@ async def handle_app_selection(callback: types.CallbackQuery, db_user: User, db:
     texts = get_texts(db_user.language)
 
     apps = await get_apps_for_platform_async(device_type, db_user.language)
+
+    # На iOS оставляем только Happ и INCY (Happ удалён из App Store, INCY — основной)
+    if device_type == 'ios':
+        apps = [
+            app
+            for app in apps
+            if any(token in str(app.get('name', '')).lower() for token in ('happ', 'incy'))
+        ]
 
     if not apps:
         await callback.answer(
