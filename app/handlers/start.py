@@ -664,8 +664,16 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
                     return int(tail[1:])
                 return None
 
+            # renew_{days}_base — «продлить по дефолту»: сперва убрать доп.
+            # устройства (до включённых в тариф), затем продлить дешевле.
+            base_renew = False
+            renew_payload = start_parameter
+            if renew_payload.startswith('renew') and renew_payload.endswith('_base'):
+                base_renew = True
+                renew_payload = renew_payload[: -len('_base')]
+
             gb = _num_tail(start_parameter, 'buy_traffic')
-            days = _num_tail(start_parameter, 'renew')
+            days = _num_tail(renew_payload, 'renew')
             devices_total = _num_tail(start_parameter, 'devices')
 
             if gb is not None:
@@ -686,6 +694,36 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
                         )],
                         [types.InlineKeyboardButton(
                             text='📦 Другие пакеты', callback_data='buy_traffic')],
+                    ]
+                )
+            elif days is not None and base_renew:
+                # «Продлить по дефолту»: два шага в одном сообщении — сброс
+                # доп. устройств (бесплатно, цена продления пересчитается
+                # автоматически) и само продление.
+                from app.database.crud.subscription import get_subscription_by_user_id
+
+                app_sub = await get_subscription_by_user_id(db, app_user.id)
+                included = settings.DEFAULT_DEVICE_LIMIT
+                if app_sub is not None and app_sub.tariff_id and app_sub.tariff:
+                    included = app_sub.tariff.device_limit or included
+                text = (
+                    '⏰ <b>Продление по базовому тарифу</b>\n\n'
+                    f'Шаг 1 — убрать доп. устройства (останется <b>{included}</b>): '
+                    'бесплатно, продление сразу станет дешевле.\n'
+                    f'Шаг 2 — продлить на <b>{days} дн.</b>'
+                )
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [types.InlineKeyboardButton(
+                            text=f'1️⃣ Оставить {included} устройств',
+                            callback_data=f'change_devices_{included}',
+                        )],
+                        [types.InlineKeyboardButton(
+                            text=f'2️⃣ Продлить на {days} дн.',
+                            callback_data=f'extend_period_{days}',
+                        )],
+                        [types.InlineKeyboardButton(
+                            text='⭐ Моя подписка', callback_data='menu_subscription')],
                     ]
                 )
             elif days is not None:

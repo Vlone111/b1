@@ -87,13 +87,28 @@ class SubscriptionStatusResponse(BaseModel):
 
 
 class RenewalOptionResponse(BaseModel):
-    """Available subscription renewal option."""
+    """Available subscription renewal option.
+
+    The breakdown fields let the app show WHAT the price is made of
+    (base tariff + extra devices + traffic) instead of one opaque number,
+    and `base_variant_price_kopeks` is the cheaper renewal price if the
+    user drops the extra devices back to the tariff's included limit.
+    """
 
     period_days: int
     price_kopeks: int
     price_rubles: float
     discount_percent: int = 0
     original_price_kopeks: int | None = None
+    # -- price breakdown (kopeks, already discounted) --
+    base_price_kopeks: int | None = None
+    devices_price_kopeks: int | None = None
+    traffic_price_kopeks: int | None = None
+    # -- devices context --
+    included_devices: int | None = None
+    extra_devices: int | None = None
+    # -- renewal with included devices only (no extra) --
+    base_variant_price_kopeks: int | None = None
 
 
 class RenewalRequest(BaseModel):
