@@ -642,6 +642,108 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
             return
         start_parameter = None  # Invalid token, ignore
 
+    # NodaVPN app deep links. Two flavours:
+    #  - plain section:  buy_traffic / renew / tariffs / devices / topup
+    #  - exact purchase: buy_traffic_{gb} / renew_{days} / devices_{total}
+    # The exact flavours land the user ONE tap away from payment: the button
+    # carries the existing purchase callback (add_traffic_N / extend_period_N
+    # charge the balance immediately; on insufficient funds the standard
+    # top-up flow opens with the amount pre-filled and the cart auto-completes
+    # the purchase after payment).
+    if start_parameter and (
+        start_parameter.startswith(('buy_traffic', 'renew', 'devices'))
+        or start_parameter in {'tariffs', 'topup'}
+    ):
+        app_user = db_user or await get_user_by_telegram_id(db, message.from_user.id)
+        if app_user and app_user.status != UserStatus.DELETED.value:
+            texts = get_texts(app_user.language)
+
+            def _num_tail(payload: str, prefix: str) -> int | None:
+                tail = payload[len(prefix):]
+                if tail.startswith('_') and tail[1:].isdigit():
+                    return int(tail[1:])
+                return None
+
+            gb = _num_tail(start_parameter, 'buy_traffic')
+            days = _num_tail(start_parameter, 'renew')
+            devices_total = _num_tail(start_parameter, 'devices')
+
+            if gb is not None:
+                # gb == 0 — переход на безлимит (так же, как пакет «0» в боте).
+                gb_label = '♾️ безлимит' if gb == 0 else f'+{gb} ГБ'
+                text = (
+                    '📦 <b>Докупка трафика</b>\n\n'
+                    f'Вы выбрали в приложении: <b>{gb_label}</b>.\n\n'
+                    'Нажмите кнопку — сумма спишется с баланса. Если средств не '
+                    'хватит, бот сразу предложит пополнение на нужную сумму и '
+                    'завершит покупку автоматически.'
+                )
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [types.InlineKeyboardButton(
+                            text=f'✅ Купить {gb_label}',
+                            callback_data=f'add_traffic_{gb}',
+                        )],
+                        [types.InlineKeyboardButton(
+                            text='📦 Другие пакеты', callback_data='buy_traffic')],
+                    ]
+                )
+            elif days is not None:
+                text = (
+                    '⏰ <b>Продление подписки</b>\n\n'
+                    f'Вы выбрали в приложении: <b>{days} дн.</b>\n\n'
+                    'Нажмите кнопку — сумма спишется с баланса. Если средств не '
+                    'хватит, бот сразу предложит пополнение на нужную сумму.'
+                )
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [types.InlineKeyboardButton(
+                            text=f'✅ Продлить на {days} дн.',
+                            callback_data=f'extend_period_{days}',
+                        )],
+                        [types.InlineKeyboardButton(
+                            text='⭐ Моя подписка', callback_data='menu_subscription')],
+                    ]
+                )
+            elif devices_total is not None:
+                text = (
+                    '📱 <b>Изменение количества устройств</b>\n\n'
+                    f'Вы выбрали в приложении: <b>до {devices_total} устройств</b>.\n\n'
+                    'Нажмите кнопку — бот покажет точную стоимость и подтвердит '
+                    'покупку.'
+                )
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [types.InlineKeyboardButton(
+                            text=f'✅ До {devices_total} устройств',
+                            callback_data=f'change_devices_{devices_total}',
+                        )],
+                        [types.InlineKeyboardButton(
+                            text='📱 Мои устройства',
+                            callback_data='subscription_change_devices')],
+                    ]
+                )
+            else:
+                # Plain section payloads (no exact item picked in the app).
+                if start_parameter.startswith('buy_traffic'):
+                    section_cb, section_label = 'buy_traffic', '📦 Купить трафик'
+                elif start_parameter == 'devices':
+                    section_cb, section_label = 'subscription_change_devices', '📱 Мои устройства'
+                elif start_parameter == 'topup':
+                    section_cb, section_label = 'balance_topup', '💳 Пополнить баланс'
+                else:  # renew / tariffs
+                    section_cb, section_label = 'menu_subscription', '⭐ Моя подписка'
+                text = texts.t('APP_DEEPLINK_OPEN', '🚀 Открываю нужный раздел из приложения NodaVPN:')
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [types.InlineKeyboardButton(text=section_label, callback_data=section_cb)],
+                    ]
+                )
+            await message.answer(text, reply_markup=keyboard, parse_mode='HTML')
+            return
+        # Unregistered user — ignore the payload and continue normal onboarding.
+        start_parameter = None
+
     if start_parameter:
         campaign = await get_campaign_by_start_parameter(
             db,
