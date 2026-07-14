@@ -769,7 +769,13 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
                     section_cb, section_label = 'subscription_change_devices', '📱 Мои устройства'
                 elif start_parameter == 'topup':
                     section_cb, section_label = 'balance_topup', '💳 Пополнить баланс'
-                else:  # renew / tariffs
+                elif start_parameter == 'renew':
+                    # Прямо в меню продления с персональными ценами — юзер
+                    # пришёл из приложения продлеваться, а не смотреть статус.
+                    section_cb, section_label = 'subscription_extend', '⏰ Продлить подписку'
+                elif start_parameter == 'tariffs':
+                    section_cb, section_label = 'menu_buy', '🛒 Купить подписку'
+                else:
                     section_cb, section_label = 'menu_subscription', '⭐ Моя подписка'
                 text = texts.t('APP_DEEPLINK_OPEN', '🚀 Открываю нужный раздел из приложения NodaVPN:')
                 keyboard = types.InlineKeyboardMarkup(
