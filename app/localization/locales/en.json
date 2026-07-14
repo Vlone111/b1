@@ -1,6 +1,6 @@
 {
   "ACCESS_DENIED": "❌ Access denied",
-  "ADDON_INSUFFICIENT_FUNDS_MESSAGE": "⚠️ <b>Insufficient funds</b>\n\nService price: {required}\nBalance: {balance}\nMissing: {missing}\n\nChoose a top-up method. The amount will be filled in automatically.",
+  "ADDON_INSUFFICIENT_FUNDS_MESSAGE": "⚠️ <b>Almost there</b>\n\nService price: {required}\nBalance: {balance}\nTo pay: {missing}\n\nPick a payment method — the amount is pre-filled. The service activates <b>automatically</b> right after payment.",
   "ADD_COUNTRIES_BUTTON": "🌐 Add countries",
   "ADD_TRAFFIC_PROMPT": "📈 <b>Add traffic to your subscription</b>\n\nCurrent limit: {current_traffic}\nChoose extra traffic:",
   "BUY_TRAFFIC_BUTTON": "📈 Buy more traffic",

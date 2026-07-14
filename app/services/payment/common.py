@@ -329,12 +329,16 @@ async def send_cart_notification_after_topup(
     # В приоритете всегда сохраненная корзина: она отражает явный выбор пользователя
     # (период/тариф/сумма). Автопродление expired — только когда корзины нет.
     if cart_data:
-        cart_total = cart_data.get('total_price', 0)
+        # Разные флоу кладут цену под разными ключами: extend/tariff_purchase —
+        # total_price, add_devices/add_traffic — price_kopeks. Хук обязан
+        # понимать оба, иначе автопокупка слотов/трафика после пополнения
+        # молча не запускается («пополнил — и ничего не произошло»).
+        cart_total = cart_data.get('total_price') or cart_data.get('price_kopeks') or 0
         if not cart_total:
             logger.warning(
-                'Сохраненная корзина найдена, но total_price отсутствует или некорректен',
+                'Сохраненная корзина найдена, но total_price/price_kopeks отсутствует',
                 user_id=user.id,
-                cart_total=cart_total,
+                cart_mode=cart_data.get('cart_mode'),
             )
             return False
 
