@@ -928,7 +928,7 @@
   "BALANCE_INFO": "\n💰 <b>Balance: {balance}</b>\n\nChoose an action:\n",
   "BALANCE_SUPPORT_REQUEST": "🛠️ Request via support",
   "BALANCE_TOPUP": "💳 Top up balance",
-  "AUTO_PURCHASE_SUBSCRIPTION_SUCCESS": "✅ Your {period} subscription was purchased automatically after topping up your balance.",
+  "AUTO_PURCHASE_SUBSCRIPTION_SUCCESS": "✅ Your {period} subscription was purchased automatically after topping up your balance.\n\n📲 Open the NodaVPN app and tap Refresh to sync the changes.",
   "AUTO_PURCHASE_SUBSCRIPTION_EXTENDED": "✅ Subscription automatically extended for {period}.",
   "AUTO_PURCHASE_SUBSCRIPTION_EXTENDED_DETAILS": "⏰ New expiration date: {date}.",
   "AUTO_PURCHASE_SUBSCRIPTION_HINT": "Open the ‘My subscription’ section to access your link and setup instructions.",
