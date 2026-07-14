@@ -380,7 +380,9 @@ class Settings(BaseSettings):
     NALOGO_STORAGE_PATH: str = './nalogo_tokens.json'
     NALOGO_PROXY_URL: str | None = None  # SOCKS proxy for nalog.ru; falls back to PROXY_URL if not set
 
-    AUTO_PURCHASE_AFTER_TOPUP_ENABLED: bool = False
+    # Пополнил → сохранённая корзина списывается и подключается сама, без
+    # лишних кликов. Выключать только если нужен ручной confirm после оплаты.
+    AUTO_PURCHASE_AFTER_TOPUP_ENABLED: bool = True
 
     # Отключение превью ссылок в сообщениях бота
     DISABLE_WEB_PAGE_PREVIEW: bool = False

@@ -1533,6 +1533,60 @@ async def return_to_saved_cart(callback: types.CallbackQuery, state: FSMContext,
         await return_to_saved_tariff_cart(callback, state, db_user, db, cart_data)
         return
 
+    # Корзины доп. услуг (слоты устройств / трафик). Раньше они проваливались
+    # в проверку period_days ниже и получали «Корзина повреждена» — теперь
+    # ведём в один клик к завершению ровно той покупки, которую юзер выбрал.
+    if cart_mode == 'add_devices':
+        devices_to_add = int(cart_data.get('devices_to_add') or 0)
+        subscription = db_user.subscription
+        if devices_to_add <= 0 or subscription is None:
+            await callback.answer(
+                texts.t('CART_STALE_DEVICES', '❌ Корзина устарела. Выберите устройства заново.'),
+                show_alert=True,
+            )
+            await user_cart_service.delete_user_cart(db_user.id)
+            return
+        target = subscription.device_limit + devices_to_add
+        await callback.message.answer(
+            texts.t(
+                'CART_RESUME_DEVICES',
+                '📱 Завершение покупки: <b>+{count} устр.</b> (до {target})',
+            ).format(count=devices_to_add, target=target),
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+                types.InlineKeyboardButton(
+                    text=texts.t('CART_RESUME_CONFIRM', '✅ Подтвердить покупку'),
+                    callback_data=f'change_devices_{target}',
+                )
+            ]]),
+            parse_mode='HTML',
+        )
+        await callback.answer()
+        return
+
+    if cart_mode == 'add_traffic':
+        traffic_gb = cart_data.get('traffic_gb')
+        if traffic_gb is None:
+            await callback.answer(
+                texts.t('CART_STALE_TRAFFIC', '❌ Корзина устарела. Выберите пакет заново.'),
+                show_alert=True,
+            )
+            await user_cart_service.delete_user_cart(db_user.id)
+            return
+        gb = int(traffic_gb)
+        label = '♾️ безлимит' if gb == 0 else f'+{gb} ГБ'
+        await callback.message.answer(
+            texts.t('CART_RESUME_TRAFFIC', '📦 Завершение покупки: <b>{label}</b>').format(label=label),
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+                types.InlineKeyboardButton(
+                    text=texts.t('CART_RESUME_CONFIRM', '✅ Подтвердить покупку'),
+                    callback_data=f'add_traffic_{gb}',
+                )
+            ]]),
+            parse_mode='HTML',
+        )
+        await callback.answer()
+        return
+
     preserved_metadata_keys = {
         'saved_cart',
         'missing_amount',
