@@ -250,6 +250,34 @@ async def get_subscription(
         # Return 200 with has_subscription: false instead of 404
         return SubscriptionStatusResponse(has_subscription=False, subscription=None)
 
+    # Живой трафик из панели, не из нашей таблицы: фоновая синхронизация
+    # может отставать на часы, и клиенты, читающие Remnawave напрямую (Happ),
+    # показывали другие цифры, чем приложение («докупил трафик — числа не
+    # сходятся»). Кнопка «Обновить» в приложении бьёт именно в этот роут, так
+    # что здесь данные обязаны быть свежими. Панель недоступна — тихо отдаём
+    # значения из базы, как раньше.
+    if fresh_user.remnawave_uuid:
+        try:
+            from app.services.remnawave_service import RemnaWaveService
+
+            stats = await RemnaWaveService().get_user_traffic_stats_by_uuid(fresh_user.remnawave_uuid)
+            if stats:
+                sub = fresh_user.subscription
+                live_used = float(stats.get('used_traffic_gb') or 0.0)
+                live_limit = int(stats.get('traffic_limit_gb') or 0)
+                changed = False
+                if abs((sub.traffic_used_gb or 0.0) - live_used) > 0.01:
+                    sub.traffic_used_gb = live_used
+                    changed = True
+                if live_limit and (sub.traffic_limit_gb or 0) != live_limit:
+                    sub.traffic_limit_gb = live_limit
+                    changed = True
+                if changed:
+                    await db.commit()
+                    await db.refresh(fresh_user.subscription)
+        except Exception:
+            pass  # панель прилегла — не роняем кабинет из-за косметики
+
     # Load tariff for daily subscription check and tariff name
     tariff_name = None
     if fresh_user.subscription.tariff_id:
