@@ -19,6 +19,7 @@ from app.localization.texts import get_texts
 from app.services.referral_withdrawal_service import referral_withdrawal_service
 from app.states import AdminStates
 from app.utils.decorators import admin_required, error_handler
+from app.utils.timezone import format_local_datetime
 
 
 logger = structlog.get_logger(__name__)
@@ -321,7 +322,7 @@ async def show_pending_withdrawal_requests(callback: types.CallbackQuery, db_use
 
         text += f'<b>#{req.id}</b> — {user_name} (ID{user_tg_id})\n'
         text += f'💰 {req.amount_kopeks / 100:.0f}₽ | {risk_emoji} Риск: {req.risk_score}/100\n'
-        text += f'📅 {req.created_at.strftime("%d.%m.%Y %H:%M")}\n\n'
+        text += f'📅 {format_local_datetime(req.created_at, "%d.%m.%Y %H:%M")}\n\n'
 
     keyboard_rows = []
     for req in requests[:5]:
@@ -383,7 +384,7 @@ async def view_withdrawal_request(callback: types.CallbackQuery, db_user: User, 
 💳 <b>Реквизиты:</b>
 <code>{request.payment_details}</code>
 
-📅 Создана: {request.created_at.strftime('%d.%m.%Y %H:%M')}
+📅 Создана: {format_local_datetime(request.created_at, '%d.%m.%Y %H:%M')}
 
 {referral_withdrawal_service.format_analysis_for_admin(analysis)}
 """
@@ -1360,7 +1361,7 @@ async def receive_log_file(message: types.Message, db_user: User, db: AsyncSessi
                     referrer_info = f' → ID{lost.expected_referrer_id}'
 
                 # Время
-                time_str = lost.click_time.strftime('%d.%m.%Y %H:%M')
+                time_str = format_local_datetime(lost.click_time, '%d.%m.%Y %H:%M')
 
                 text += f'{i}. {user_name} — {status}\n'
                 text += f'   <code>{lost.referral_code}</code>{referrer_info} ({time_str})\n'

@@ -3,7 +3,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
+
+from app.utils.timezone import format_local_datetime
 
 
 CampaignBonusType = Literal['balance', 'subscription', 'none', 'tariff']
@@ -32,6 +34,12 @@ class CampaignListItem(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer('created_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class CampaignListResponse(BaseModel):
@@ -73,6 +81,12 @@ class CampaignDetailResponse(BaseModel):
     web_link: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class CampaignCreateRequest(BaseModel):
@@ -157,6 +171,12 @@ class CampaignStatisticsResponse(BaseModel):
     deep_link: str | None = None
     web_link: str | None = None
 
+    @field_serializer('last_registration')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 class CampaignRegistrationItem(BaseModel):
     """Campaign registration item."""
@@ -178,6 +198,12 @@ class CampaignRegistrationItem(BaseModel):
     has_paid: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer('created_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class CampaignRegistrationsResponse(BaseModel):
@@ -264,6 +290,12 @@ class AdminTopRegistrationItem(BaseModel):
     has_paid: bool = False
     is_active: bool = False
     total_earnings_kopeks: int = 0  # actually total spending, named for frontend compat
+
+    @field_serializer('created_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class AdminCampaignChartDataResponse(BaseModel):

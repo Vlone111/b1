@@ -411,68 +411,50 @@ async def show_subscription_info(callback: types.CallbackQuery, db_user: User, d
         except Exception as e:
             logger.warning('Ошибка получения тарифа', error=e, exc_info=True)
 
+    # Название тарифа для отображения
+    tariff_name_display = ''
+    if tariff:
+        tariff_name_display = f'📦 {tariff.name}'
+    else:
+        tariff_name_display = ''
+
     # Определяем, суточный ли тариф для выбора шаблона
     is_daily_tariff = tariff and getattr(tariff, 'is_daily', False)
 
-    if is_daily_tariff:
-        # Для суточных тарифов другой шаблон без "Действует до" и "Осталось"
-        message_template = texts.t(
-            'SUBSCRIPTION_DAILY_OVERVIEW_TEMPLATE',
-            """👤 {full_name}
-💰 Баланс: {balance}
-📱 Подписка: {status_emoji} {status_display}{warning}{tariff_info_block}
-
-📱 Информация о подписке
-🎭 Тип: {subscription_type}
-📈 Трафик: {traffic}
-🌍 Серверы: {servers}
-📱 Устройства: {devices_used} / {device_limit}""",
-        )
-    else:
-        message_template = texts.t(
-            'SUBSCRIPTION_OVERVIEW_TEMPLATE',
-            """👤 {full_name}
-💰 Баланс: {balance}
-📱 Подписка: {status_emoji} {status_display}{warning}{tariff_info_block}
-
-📱 Информация о подписке
-🎭 Тип: {subscription_type}
-📅 Действует до: {end_date}
-⏰ Осталось: {time_left}
-📈 Трафик: {traffic}
-🌍 Серверы: {servers}
-📱 Устройства: {devices_used} / {device_limit}""",
-        )
-
-    if not show_devices:
-        message_template = message_template.replace(
-            '\n📱 Устройства: {devices_used} / {device_limit}',
-            '',
-        )
-
     device_limit_display = str(subscription.device_limit)
 
-    message = message_template.format(
-        full_name=db_user.full_name,
-        balance=settings.format_price(db_user.balance_kopeks),
-        status_emoji=status_emoji,
-        status_display=status_display,
-        warning=warning_text,
-        tariff_info_block=tariff_info_block,
-        subscription_type=subscription_type,
-        end_date=format_local_datetime(subscription.end_date, '%d.%m.%Y %H:%M'),
-        time_left=time_left_text,
-        traffic=traffic_used_display,
-        servers=servers_display,
-        devices_used=devices_used_str,
-        device_limit=device_limit_display,
-    )
+    # Первая часть сообщения (без blockquote)
+    header_part = f"""👤 {db_user.full_name}
+💰 Баланс: {settings.format_price(db_user.balance_kopeks)}
+📱 Подписка: {status_emoji} {status_display}{warning_text}
 
+{tariff_name_display}"""
+
+    # Вторая часть (информация о подписке) - начинается blockquote
+    if is_daily_tariff:
+        # Для суточных тарифов другой шаблон без "Действует до" и "Осталось"
+        info_part = f"""📱 Информация о подписке
+🎭 Тип: {subscription_type}
+📈 Трафик: {traffic_used_display}
+📱 Устройства: {devices_used_str} / {device_limit_display}"""
+    else:
+        info_part = f"""📱 Информация о подписке
+🎭 Тип: {subscription_type}
+📅 Действует до: {format_local_datetime(subscription.end_date, '%d.%m.%Y %H:%M')}
+⏰ Осталось: {time_left_text}
+📈 Трафик: {traffic_used_display}
+📱 Устройства: {devices_used_str} / {device_limit_display}"""
+
+    if not show_devices:
+        info_part = info_part.replace('\n📱 Устройства: {devices_used_str} / {device_limit_display}', '')
+        info_part = info_part.replace(f'\n📱 Устройства: {devices_used_str} / {device_limit_display}', '')
+
+    # Начинаем blockquote с информации о подписке
+    blockquote_content = f'<blockquote>{info_part}'
+
+    # Добавляем список подключенных устройств в blockquote
     if show_devices and devices_list:
-        message += '\n\n' + texts.t(
-            'SUBSCRIPTION_CONNECTED_DEVICES_TITLE',
-            '<blockquote>📱 <b>Подключенные устройства:</b>\n',
-        )
+        blockquote_content += '\n\n📱 <b>Подключенные устройства:</b>\n'
         for device in devices_list[:5]:
             platform = device.get('platform', 'Unknown')
             device_model = device.get('deviceModel', 'Unknown')
@@ -480,10 +462,15 @@ async def show_subscription_info(callback: types.CallbackQuery, db_user: User, d
 
             if len(device_info) > 35:
                 device_info = device_info[:32] + '...'
-            message += f'• {device_info}\n'
-        message += texts.t('SUBSCRIPTION_CONNECTED_DEVICES_FOOTER', '</blockquote>')
+            blockquote_content += f'• {device_info}\n'
 
-    # Отображаем докупленный трафик
+    # Закрываем blockquote после списка устройств
+    blockquote_content += '</blockquote>'
+
+    # Объединяем части сообщения
+    message = header_part + '\n\n' + blockquote_content
+
+    # Отображаем докупленный трафик (вне blockquote)
     if subscription.traffic_limit_gb > 0:  # Только для лимитированных тарифов
         from sqlalchemy import select as sql_select
 
@@ -552,7 +539,7 @@ async def show_subscription_info(callback: types.CallbackQuery, db_user: User, d
 
         message += '\n\n' + texts.t(
             'SUBSCRIPTION_CONNECT_LINK_SECTION',
-            '🔗 <b>Ссылка для подключения:</b>\n{subscription_url}',
+            '🔗 <blockquote>Ссылка для подключения: \n"{subscription_url}"<blockquote>',
         ).format(subscription_url=subscription_link_display)
         message += '\n\n' + texts.t(
             'SUBSCRIPTION_CONNECT_LINK_PROMPT',
@@ -569,12 +556,128 @@ async def show_subscription_info(callback: types.CallbackQuery, db_user: User, d
     await callback.answer()
 
 
-async def show_trial_offer(callback: types.CallbackQuery, db_user: User, db: AsyncSession):
-    # Проверяем, доступно ли сообщение для редактирования
-    if isinstance(callback.message, InaccessibleMessage):
-        await callback.answer()
-        return
+async def get_subscription_info_text_for_start(
+    db_user: User,
+    db: AsyncSession,
+    texts: Any,
+) -> str:
+    """Возвращает текст информации о подписке для /start (используется вместо текста главного меню)."""
+    await db.refresh(db_user)
 
+    subscription = db_user.subscription
+
+    if not subscription:
+        return ''
+
+    from app.database.crud.subscription import check_and_update_subscription_status
+
+    subscription = await check_and_update_subscription_status(db, subscription)
+
+    subscription_service = SubscriptionService()
+    await subscription_service.sync_subscription_usage(db, subscription)
+
+    # Проверяем и синхронизируем подписку с RemnaWave если необходимо
+    await db.refresh(db_user)
+    subscription = db_user.subscription
+    if not subscription:
+        return ''
+
+    from app.database.crud.subscription import check_and_update_subscription_status
+    subscription = await check_and_update_subscription_status(db, subscription)
+    subscription_service = SubscriptionService()
+    await subscription_service.sync_subscription_usage(db, subscription)
+    await db.refresh(subscription)
+    await db.refresh(db_user)
+    current_time = datetime.now(UTC)
+
+    # Название тарифа
+    tariff_name = getattr(subscription, 'tariff_name', None) or getattr(subscription, 'tariff', None)
+    if hasattr(tariff_name, 'name'):
+        tariff_name = tariff_name.name
+    if not tariff_name:
+        tariff_name = '—'
+
+    # Дата окончания и дни
+    end_date = format_local_datetime(subscription.end_date, '%d.%m.%Y %H:%M')
+    days_left = max(0, (subscription.end_date - current_time).days)
+
+    # Трафик
+    used_traffic = f'{subscription.traffic_used_gb:.1f}'
+    traffic_limit = subscription.traffic_limit_gb
+    traffic_str = f'{used_traffic} / {traffic_limit} ГБ' if traffic_limit else f'{used_traffic} ГБ'
+
+    # Устройства
+    device_limit = subscription.device_limit
+    devices_list = []
+    devices_count = 0
+    show_devices = settings.is_devices_selection_enabled()
+    if show_devices and db_user.remnawave_uuid:
+        try:
+            from app.services.remnawave_service import RemnaWaveService
+            service = RemnaWaveService()
+            async with service.get_api_client() as api:
+                response = await api._make_request('GET', f'/api/hwid/devices/{db_user.remnawave_uuid}')
+                if response and 'response' in response:
+                    devices_info = response['response']
+                    devices_count = devices_info.get('total', 0)
+                    devices_list = devices_info.get('devices', [])
+        except Exception as e:
+            logger.error('Ошибка получения устройств для отображения', error=e)
+
+    # Формируем список устройств
+    devices_str = f'{devices_count} / {device_limit}'
+    connected_devices = ''
+    if devices_list:
+        connected_devices = '<blockquote>📱 <b>Подключенные устройства:</b>'
+        for device in devices_list[:5]:
+            platform = device.get('platform', 'Unknown')
+            device_model = device.get('deviceModel', 'Unknown')
+            device_info = f'{platform} - {device_model}'
+            connected_devices += f'\n• {device_info}'
+        connected_devices += '</blockquote>'
+
+    # Ссылка
+    subscription_link = get_display_subscription_link(subscription)
+    link_str = ''
+    if subscription_link:
+        link_str = f'<blockquote>🔗 Скопируйте ссылку и добавьте в ваше VPN приложение:\n<code>{subscription_link}</code></blockquote>'
+
+    # Итоговый текст с форматированием в виде блоков
+    msg = f"""👤 {db_user.full_name}
+
+<blockquote>📦 Подписка: {tariff_name}
+📅 Действует до: {end_date} (ост. {days_left} дн.)
+📈 Трафик: {traffic_str}
+📱 Устройства: {devices_str}</blockquote>"""
+    
+    if connected_devices:
+        msg += f"\n\n{connected_devices}"
+    if link_str:
+        msg += f"\n\n{link_str}"
+
+    try:
+        from app.handlers.contests import build_main_menu_contest_block
+
+        contest_block = await build_main_menu_contest_block(db, db_user.id)
+        if contest_block:
+            msg += f'\n\n{contest_block}'
+    except Exception as contest_error:
+        logger.debug(
+            'Не удалось построить блок конкурса для start-карточки подписки',
+            user_id=db_user.id,
+            error=contest_error,
+        )
+
+    return msg.strip()
+
+
+
+async def show_trial_offer(
+    callback: types.CallbackQuery,
+    db_user: User,
+    db: AsyncSession,
+):
+    """Показывает доступный триал."""
     texts = get_texts(db_user.language)
 
     # Проверяем, отключён ли триал для этого типа пользователя
@@ -1430,6 +1533,60 @@ async def return_to_saved_cart(callback: types.CallbackQuery, state: FSMContext,
         await return_to_saved_tariff_cart(callback, state, db_user, db, cart_data)
         return
 
+    # Корзины доп. услуг (слоты устройств / трафик). Раньше они проваливались
+    # в проверку period_days ниже и получали «Корзина повреждена» — теперь
+    # ведём в один клик к завершению ровно той покупки, которую юзер выбрал.
+    if cart_mode == 'add_devices':
+        devices_to_add = int(cart_data.get('devices_to_add') or 0)
+        subscription = db_user.subscription
+        if devices_to_add <= 0 or subscription is None:
+            await callback.answer(
+                texts.t('CART_STALE_DEVICES', '❌ Корзина устарела. Выберите устройства заново.'),
+                show_alert=True,
+            )
+            await user_cart_service.delete_user_cart(db_user.id)
+            return
+        target = subscription.device_limit + devices_to_add
+        await callback.message.answer(
+            texts.t(
+                'CART_RESUME_DEVICES',
+                '📱 Завершение покупки: <b>+{count} устр.</b> (до {target})',
+            ).format(count=devices_to_add, target=target),
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+                types.InlineKeyboardButton(
+                    text=texts.t('CART_RESUME_CONFIRM', '✅ Подтвердить покупку'),
+                    callback_data=f'change_devices_{target}',
+                )
+            ]]),
+            parse_mode='HTML',
+        )
+        await callback.answer()
+        return
+
+    if cart_mode == 'add_traffic':
+        traffic_gb = cart_data.get('traffic_gb')
+        if traffic_gb is None:
+            await callback.answer(
+                texts.t('CART_STALE_TRAFFIC', '❌ Корзина устарела. Выберите пакет заново.'),
+                show_alert=True,
+            )
+            await user_cart_service.delete_user_cart(db_user.id)
+            return
+        gb = int(traffic_gb)
+        label = '♾️ безлимит' if gb == 0 else f'+{gb} ГБ'
+        await callback.message.answer(
+            texts.t('CART_RESUME_TRAFFIC', '📦 Завершение покупки: <b>{label}</b>').format(label=label),
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[[
+                types.InlineKeyboardButton(
+                    text=texts.t('CART_RESUME_CONFIRM', '✅ Подтвердить покупку'),
+                    callback_data=f'add_traffic_{gb}',
+                )
+            ]]),
+            parse_mode='HTML',
+        )
+        await callback.answer()
+        return
+
     preserved_metadata_keys = {
         'saved_cart',
         'missing_amount',
@@ -1704,15 +1861,18 @@ async def handle_extend_subscription(callback: types.CallbackQuery, db_user: Use
     renewal_lines = [
         '⏰ Продление подписки',
         '',
-        f'Осталось дней: {subscription.days_left}',
-        '',
-        '<b>Ваша текущая конфигурация:</b>',
-        f'🌍 Серверов: {len(subscription.connected_squads or [])}',
-        f'📊 Трафик: {texts.format_traffic(subscription.traffic_limit_gb)}',
     ]
 
-    if settings.is_devices_selection_enabled():
-        renewal_lines.append(f'📱 Устройств: {subscription.device_limit}')
+    # Добавляем название подписки/тарифа
+    if settings.is_tariffs_mode() and subscription.tariff_id:
+        try:
+            from app.database.crud.tariff import get_tariff_by_id
+
+            tariff = await get_tariff_by_id(db, subscription.tariff_id)
+            if tariff:
+                renewal_lines.append(f'<b>📦 {tariff.name}</b>')
+        except Exception:
+            pass
 
     renewal_lines.extend(
         [
@@ -1736,8 +1896,6 @@ async def handle_extend_subscription(callback: types.CallbackQuery, db_user: Use
     )
     if promo_offer_hint:
         message_text += f'{promo_offer_hint}\n\n'
-
-    message_text += '💡 <i>Цена включает все ваши текущие серверы и настройки</i>'
 
     await callback.message.edit_text(
         message_text,

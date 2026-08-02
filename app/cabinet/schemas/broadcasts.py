@@ -3,7 +3,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator
+
+from app.utils.timezone import format_local_datetime
 
 
 # ============ Channel Types ============
@@ -151,6 +153,12 @@ class BroadcastResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_serializer('created_at', 'completed_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class BroadcastListResponse(BaseModel):

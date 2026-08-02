@@ -125,10 +125,14 @@ async def clear_trial_tariff(db: AsyncSession) -> None:
 async def get_tariffs_for_user(
     db: AsyncSession,
     promo_group_id: int | None = None,
+    user_id: int | None = None,
 ) -> list[Tariff]:
     """
     Получает тарифы, доступные для пользователя с учетом его промогруппы.
     Если у тарифа нет ограничений по промогруппам - он доступен всем.
+    
+    Триальные тарифы (с is_trial_available=True) НИКОГДА не отображаются в списке тарифов.
+    Они доступны только через отдельную кнопку "Тестовая подписка" в главном меню.
     """
     query = (
         select(Tariff)
@@ -140,9 +144,13 @@ async def get_tariffs_for_user(
     result = await db.execute(query)
     tariffs = result.scalars().all()
 
-    # Фильтруем по промогруппе
+    # Фильтруем по промогруппе, исключая триальные тарифы
     available_tariffs = []
     for tariff in tariffs:
+        # ВСЕГДА исключаем триальные тарифы из списка покупки
+        if tariff.is_trial_available:
+            continue
+
         if not tariff.allowed_promo_groups:
             # Нет ограничений - доступен всем
             available_tariffs.append(tariff)

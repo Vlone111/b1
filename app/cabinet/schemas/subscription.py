@@ -2,7 +2,9 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.utils.timezone import format_local_datetime
 
 
 class ServerInfo(BaseModel):
@@ -22,6 +24,11 @@ class TrafficPurchaseInfo(BaseModel):
     created_at: datetime
     days_remaining: int
     progress_percent: float
+
+    @field_serializer('expires_at', 'created_at')
+    def serialize_datetime(self, value: datetime) -> str:
+        """Serialize datetime to local timezone string."""
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S') if value else None
 
 
 class SubscriptionData(BaseModel):
@@ -59,6 +66,11 @@ class SubscriptionData(BaseModel):
     tariff_name: str | None = None
     traffic_reset_mode: str | None = None
 
+    @field_serializer('start_date', 'end_date', 'next_daily_charge_at')
+    def serialize_datetime(self, value: datetime) -> str:
+        """Serialize datetime to local timezone string."""
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S') if value else None
+
     class Config:
         from_attributes = True
 
@@ -75,13 +87,28 @@ class SubscriptionStatusResponse(BaseModel):
 
 
 class RenewalOptionResponse(BaseModel):
-    """Available subscription renewal option."""
+    """Available subscription renewal option.
+
+    The breakdown fields let the app show WHAT the price is made of
+    (base tariff + extra devices + traffic) instead of one opaque number,
+    and `base_variant_price_kopeks` is the cheaper renewal price if the
+    user drops the extra devices back to the tariff's included limit.
+    """
 
     period_days: int
     price_kopeks: int
     price_rubles: float
     discount_percent: int = 0
     original_price_kopeks: int | None = None
+    # -- price breakdown (kopeks, already discounted) --
+    base_price_kopeks: int | None = None
+    devices_price_kopeks: int | None = None
+    traffic_price_kopeks: int | None = None
+    # -- devices context --
+    included_devices: int | None = None
+    extra_devices: int | None = None
+    # -- renewal with included devices only (no extra) --
+    base_variant_price_kopeks: int | None = None
 
 
 class RenewalRequest(BaseModel):

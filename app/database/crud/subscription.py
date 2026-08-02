@@ -211,7 +211,18 @@ async def create_paid_subscription(
     end_date = datetime.now(UTC) + timedelta(days=duration_days)
 
     if device_limit is None:
-        device_limit = settings.DEFAULT_DEVICE_LIMIT
+        if tariff_id is not None:
+            try:
+                from app.database.crud.tariff import get_tariff_by_id
+                tariff = await get_tariff_by_id(db, tariff_id)
+                if tariff and tariff.device_limit and tariff.device_limit > 0:
+                    device_limit = tariff.device_limit
+                else:
+                    device_limit = settings.DEFAULT_DEVICE_LIMIT
+            except Exception:
+                device_limit = settings.DEFAULT_DEVICE_LIMIT
+        else:
+            device_limit = settings.DEFAULT_DEVICE_LIMIT
 
     # Fallback: если connected_squads пустой — берём первый доступный сквад
     final_squads = list(connected_squads or [])

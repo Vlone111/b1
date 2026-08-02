@@ -316,6 +316,43 @@ async def create_topup(
             detail='Balance top-up is restricted for this account',
         )
 
+    # Try to apply referral code if user doesn't have a referrer yet and amount >= 100 RUB
+    if (
+        request.referral_code
+        and not user.referred_by_id
+        and request.amount_kopeks >= settings.REFERRAL_MINIMUM_TOPUP_KOPEKS
+    ):
+        from app.database.crud.user import get_user_by_referral_code
+        from app.services.referral_service import process_referral_registration
+
+        referrer = await get_user_by_referral_code(db, request.referral_code)
+        if referrer and referrer.id != user.id:
+            user.referred_by_id = referrer.id
+            await db.commit()
+            logger.info(
+                '✅ Реферальный код применен при пополнении баланса',
+                user_id=user.id,
+                referrer_id=referrer.id,
+                amount_kopeks=request.amount_kopeks,
+            )
+
+            # Trigger referral registration process to send notifications and create pending earning
+            try:
+                async with create_bot() as bot:
+                    await process_referral_registration(db, user.id, referrer.id, bot=bot)
+                logger.info(
+                    '✅ Процесс регистрации реферала инициирован при пополнении',
+                    user_id=user.id,
+                    referrer_id=referrer.id,
+                )
+            except Exception as e:
+                logger.error(
+                    '❌ Ошибка при инициировании регистрации реферала',
+                    user_id=user.id,
+                    referrer_id=referrer.id,
+                    error=e,
+                )
+
     # Validate payment method
     methods = await get_payment_methods(user=user, db=db)
     method = next((m for m in methods if m.id == request.payment_method), None)

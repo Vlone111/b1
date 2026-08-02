@@ -28,6 +28,7 @@ from app.services.maintenance_service import maintenance_service
 from app.services.monitoring_service import monitoring_service
 from app.services.nalogo_queue_service import nalogo_queue_service
 from app.services.payment_service import PaymentService
+from app.utils.timezone import format_local_datetime
 from app.services.payment_verification_service import (
     PENDING_MAX_AGE,
     SUPPORTED_MANUAL_CHECK_METHODS,
@@ -415,7 +416,7 @@ async def main():
                         from datetime import datetime
 
                         next_dt = datetime.fromisoformat(status.next_rotation)
-                        stage.log(f'Следующая ротация: {next_dt.strftime("%d.%m.%Y %H:%M")}')
+                        stage.log(f'Следующая ротация: {format_local_datetime(next_dt, "%d.%m.%Y %H:%M")}')
                 except Exception as e:
                     stage.warning(f'Ошибка запуска сервиса ротации логов: {e}')
                     logger.error('❌ Ошибка запуска сервиса ротации логов', error=e)
@@ -429,9 +430,9 @@ async def main():
                 await remnawave_sync_service.initialize()
                 status = remnawave_sync_service.get_status()
                 if status.enabled:
-                    times_text = ', '.join(t.strftime('%H:%M') for t in status.times) or '—'
+                    times_text = ', '.join(format_local_datetime(t, '%H:%M') for t in status.times) or '—'
                     if status.next_run:
-                        next_run_text = status.next_run.strftime('%d.%m.%Y %H:%M')
+                        next_run_text = format_local_datetime(status.next_run, '%d.%m.%Y %H:%M')
                         stage.log(f'Активирована: расписание {times_text}, ближайший запуск {next_run_text}')
                     else:
                         stage.log(f'Активирована: расписание {times_text}')

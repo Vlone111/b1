@@ -19,9 +19,11 @@ from app.database.crud.user_message import get_random_active_message
 from app.database.models import PromoGroup, User
 from app.handlers.subscription.traffic import add_traffic, handle_add_traffic
 from app.keyboards.inline import (
+    get_faq_list_keyboard,
     get_info_menu_keyboard,
     get_language_selection_keyboard,
     get_main_menu_keyboard_async,
+    get_settings_menu_keyboard,
 )
 from app.localization.texts import get_rules, get_texts
 from app.services.faq_service import FaqService
@@ -176,6 +178,16 @@ async def show_main_menu(
 
     menu_text = await get_main_menu_text(db_user, texts, db)
 
+    # Если у пользователя активна подписка, показываем полную информацию о подписке в главном меню
+    menu_text_to_send = menu_text
+    if db_user.subscription and subscription_is_active:
+        try:
+            from app.handlers.subscription.purchase import get_subscription_info_text_for_start
+            menu_text_to_send = await get_subscription_info_text_for_start(db_user, db, texts)
+        except Exception as e:
+            logger.warning('Ошибка при получении текста информации о подписке для меню', error=e)
+            menu_text_to_send = menu_text
+
     draft_exists = await has_subscription_checkout_draft(db_user.id)
     show_resume_checkout = should_offer_checkout_resume(db_user, draft_exists)
 
@@ -216,7 +228,7 @@ async def show_main_menu(
 
     await edit_or_answer_photo(
         callback=callback,
-        caption=menu_text,
+        caption=menu_text_to_send,
         keyboard=keyboard,
         parse_mode='HTML',
     )
@@ -508,7 +520,7 @@ async def show_faq_pages(
             ]
         )
 
-    buttons.append([types.InlineKeyboardButton(text=texts.BACK, callback_data='menu_info')])
+    buttons.append([types.InlineKeyboardButton(text=texts.BACK, callback_data='menu_info_faq')])
 
     await callback.message.edit_text(
         caption,
@@ -641,11 +653,11 @@ async def show_faq_page(
         [
             types.InlineKeyboardButton(
                 text=texts.t('FAQ_BACK_TO_LIST', '⬅️ К списку FAQ'),
-                callback_data='menu_faq',
+                callback_data='menu_info_faq',
             )
         ]
     )
-    keyboard_rows.append([types.InlineKeyboardButton(text=texts.BACK, callback_data='menu_info')])
+    keyboard_rows.append([types.InlineKeyboardButton(text=texts.BACK, callback_data='menu_info_faq')])
 
     await callback.message.edit_text(
         message_text,
@@ -997,6 +1009,228 @@ async def process_language_change(
     await callback.answer(texts.t('LANGUAGE_SELECTED', '🌐 Язык интерфейса обновлен.'))
 
 
+async def show_settings_menu(
+    callback: types.CallbackQuery,
+    db_user: User,
+    db: AsyncSession,
+):
+    if db_user is None:
+        # Пользователь не найден, используем язык по умолчанию
+        texts = get_texts(settings.DEFAULT_LANGUAGE)
+        await callback.answer(
+            texts.t(
+                'USER_NOT_FOUND_ERROR',
+                'Ошибка: пользователь не найден.',
+            ),
+            show_alert=True,
+        )
+        return
+
+    texts = get_texts(db_user.language)
+
+    header = texts.t('MENU_SETTINGS_HEADER', '⚙️ <b>Настройки</b>')
+    prompt = texts.t('MENU_SETTINGS_PROMPT', 'Выберите опцию:')
+    caption = f'{header}\n\n{prompt}' if prompt else header
+
+    # Создаём клавиатуру с кнопками Язык и Инфо
+    keyboard = get_settings_menu_keyboard(language=db_user.language)
+
+    await edit_or_answer_photo(
+        callback=callback,
+        caption=caption,
+        keyboard=keyboard,
+        parse_mode='HTML',
+    )
+    await callback.answer()
+
+
+async def show_faq_menu(
+    callback: types.CallbackQuery,
+    db_user: User,
+    db: AsyncSession,
+):
+    """Показывает меню с вопросами FAQ."""
+    if db_user is None:
+        texts = get_texts(settings.DEFAULT_LANGUAGE)
+        await callback.answer(
+            texts.t('USER_NOT_FOUND_ERROR', 'Ошибка: пользователь не найден.'),
+            show_alert=True,
+        )
+        return
+
+    texts = get_texts(db_user.language)
+
+    header = texts.t('MENU_FAQ_HEADER', '❓ <b>Часто задаваемые вопросы</b>')
+    prompt = texts.t('MENU_FAQ_PROMPT', 'Выберите вопрос:')
+    caption = f'{header}\n\n{prompt}' if prompt else header
+
+    # Получаем FAQ страницы из БД
+    faq_pages = await FaqService.get_pages(db, db_user.language)
+    
+    keyboard = get_faq_list_keyboard(language=db_user.language, faq_pages=faq_pages)
+
+    await edit_or_answer_photo(
+        callback=callback,
+        caption=caption,
+        keyboard=keyboard,
+        parse_mode='HTML',
+    )
+    await callback.answer()
+
+
+async def show_faq_answer(
+    callback: types.CallbackQuery,
+    db_user: User,
+    db: AsyncSession,
+):
+    """Показывает ответ на вопрос FAQ."""
+    if db_user is None:
+        texts = get_texts(settings.DEFAULT_LANGUAGE)
+        await callback.answer(
+            texts.t('USER_NOT_FOUND_ERROR', 'Ошибка: пользователь не найден.'),
+            show_alert=True,
+        )
+        return
+
+    texts = get_texts(db_user.language)
+
+    # Извлекаем ID вопроса и номер страницы из callback_data
+    raw_data = callback.data or ''
+    parts = raw_data.split(':')
+    
+    page_id = None
+    requested_page = 1
+    
+    if len(parts) >= 2:
+        try:
+            page_id = int(parts[1])
+        except ValueError:
+            page_id = None
+    
+    if len(parts) >= 3:
+        try:
+            requested_page = int(parts[2])
+        except ValueError:
+            requested_page = 1
+
+    if not page_id:
+        await callback.answer()
+        return
+
+    # Получаем страницу FAQ из БД
+    try:
+        faq_page = await FaqService.get_page(db, page_id, db_user.language)
+        
+        if not faq_page or not faq_page.is_active:
+            await callback.answer(
+                texts.t('FAQ_PAGE_NOT_AVAILABLE', 'Эта страница FAQ недоступна.'),
+                show_alert=True,
+            )
+            return
+    except Exception as e:
+        logger.error(f'Error loading FAQ page: {e}', exc_info=True)
+        await callback.answer(
+            texts.t('FAQ_PAGE_NOT_AVAILABLE', 'Эта страница FAQ недоступна.'),
+            show_alert=True,
+        )
+        return
+
+    # Разделяем контент на страницы если он слишком большой
+    content_pages = FaqService.split_content_into_pages(faq_page.content)
+    
+    if not content_pages:
+        await callback.answer(
+            texts.t('FAQ_PAGE_EMPTY', 'Текст для этой страницы ещё не добавлен.'),
+            show_alert=True,
+        )
+        return
+
+    total_pages = len(content_pages)
+    current_page = max(1, min(requested_page, total_pages))
+
+    # Формируем сообщение
+    header = texts.t('FAQ_HEADER', '❓ <b>FAQ</b>')
+    title_template = texts.t('FAQ_PAGE_TITLE', '<b>{title}</b>')
+    page_title = (faq_page.title or '').strip()
+    if not page_title:
+        page_title = texts.t('FAQ_PAGE_UNTITLED', 'Без названия')
+    title_block = title_template.format(title=html.escape(page_title))
+
+    body = content_pages[current_page - 1]
+
+    footer_template = texts.t(
+        'FAQ_PAGE_FOOTER',
+        'Страница {current} из {total}',
+    )
+    footer = ''
+    if total_pages > 1 and footer_template:
+        try:
+            footer = footer_template.format(current=current_page, total=total_pages)
+        except Exception:
+            footer = f'{current_page}/{total_pages}'
+
+    parts_to_join = [header, title_block]
+    if body:
+        parts_to_join.append(body)
+    if footer:
+        parts_to_join.append(f'<code>{footer}</code>')
+
+    message_text = '\n\n'.join(segment for segment in parts_to_join if segment)
+
+    # Формируем клавиатуру
+    keyboard_rows: list[list[types.InlineKeyboardButton]] = []
+
+    if total_pages > 1:
+        nav_row: list[types.InlineKeyboardButton] = []
+        if current_page > 1:
+            nav_row.append(
+                types.InlineKeyboardButton(
+                    text=texts.t('PAGINATION_PREV', '⬅️'),
+                    callback_data=f'faq_answer:{page_id}:{current_page - 1}',
+                )
+            )
+
+        nav_row.append(
+            types.InlineKeyboardButton(
+                text=f'{current_page}/{total_pages}',
+                callback_data='noop',
+            )
+        )
+
+        if current_page < total_pages:
+            nav_row.append(
+                types.InlineKeyboardButton(
+                    text=texts.t('PAGINATION_NEXT', '➡️'),
+                    callback_data=f'faq_answer:{page_id}:{current_page + 1}',
+                )
+            )
+
+        keyboard_rows.append(nav_row)
+
+    keyboard_rows.append(
+        [
+            types.InlineKeyboardButton(
+                text=texts.t('FAQ_BACK_TO_LIST', '⬅️ К списку FAQ'),
+                callback_data='menu_faq',
+            )
+        ]
+    )
+
+    try:
+        await callback.message.edit_text(
+            message_text,
+            reply_markup=types.InlineKeyboardMarkup(inline_keyboard=keyboard_rows),
+            parse_mode='HTML',
+            disable_web_page_preview=settings.DISABLE_WEB_PAGE_PREVIEW,
+        )
+    except Exception as e:
+        logger.error(f'Error sending FAQ answer: {e}', exc_info=True)
+        await callback.answer('Ошибка при загрузке ответа', show_alert=True)
+        return
+        
+    await callback.answer()
+
+
 async def handle_back_to_menu(callback: types.CallbackQuery, state: FSMContext, db_user: User, db: AsyncSession):
     if db_user is None:
         # Пользователь не найден, используем язык по умолчанию
@@ -1021,6 +1255,16 @@ async def handle_back_to_menu(callback: types.CallbackQuery, state: FSMContext, 
         subscription_is_active = db_user.subscription.is_active
 
     menu_text = await get_main_menu_text(db_user, texts, db)
+
+    # Если у пользователя активна подписка, показываем полную информацию о подписке в главном меню
+    menu_text_to_send = menu_text
+    if db_user.subscription and subscription_is_active:
+        try:
+            from app.handlers.subscription.purchase import get_subscription_info_text_for_start
+            menu_text_to_send = await get_subscription_info_text_for_start(db_user, db, texts)
+        except Exception as e:
+            logger.warning('Ошибка при получении текста информации о подписке для меню', error=e)
+            menu_text_to_send = menu_text
 
     draft_exists = await has_subscription_checkout_draft(db_user.id)
     show_resume_checkout = should_offer_checkout_resume(db_user, draft_exists)
@@ -1062,7 +1306,7 @@ async def handle_back_to_menu(callback: types.CallbackQuery, state: FSMContext, 
 
     await edit_or_answer_photo(
         callback=callback,
-        caption=menu_text,
+        caption=menu_text_to_send,
         keyboard=keyboard,
         parse_mode='HTML',
     )
@@ -1231,10 +1475,23 @@ async def get_main_menu_text(user, texts, db: AsyncSession):
     try:
         random_message = await get_random_active_message(db)
         if random_message:
-            return _insert_random_message(base_text, random_message, action_prompt)
+            base_text = _insert_random_message(base_text, random_message, action_prompt)
 
     except Exception as e:
         logger.error('Ошибка получения случайного сообщения', error=e)
+
+    try:
+        from app.handlers.contests import build_main_menu_contest_block
+
+        contest_block = await build_main_menu_contest_block(db, user.id)
+        if contest_block:
+            base_text = f'{base_text}\n{contest_block}'
+    except Exception as contest_error:
+        logger.debug(
+            'Не удалось построить блок конкурса для главного меню',
+            user_id=getattr(user, 'id', None),
+            error=contest_error,
+        )
 
     return base_text
 
@@ -1449,14 +1706,20 @@ def register_handlers(dp: Dispatcher):
     )
 
     dp.callback_query.register(
+        show_settings_menu,
+        F.data == 'menu_settings',
+    )
+
+    dp.callback_query.register(
         show_promo_groups_info,
         F.data == 'menu_info_promo_groups',
     )
 
-    dp.callback_query.register(
-        show_faq_pages,
-        F.data == 'menu_faq',
-    )
+    # FAQ button was removed from info menu, so this handler is no longer used
+    # dp.callback_query.register(
+    #     show_faq_pages,
+    #     F.data == 'menu_info_faq',
+    # )
 
     dp.callback_query.register(
         show_faq_page,
@@ -1484,6 +1747,16 @@ def register_handlers(dp: Dispatcher):
     )
 
     dp.callback_query.register(show_language_menu, F.data == 'menu_language')
+
+    dp.callback_query.register(
+        show_faq_menu,
+        F.data == 'menu_faq',
+    )
+
+    dp.callback_query.register(
+        show_faq_answer,
+        F.data.startswith('faq_answer:'),
+    )
 
     dp.callback_query.register(process_language_change, F.data.startswith('language_select:'), StateFilter(None))
 

@@ -3,7 +3,9 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.utils.timezone import format_local_datetime
 
 
 # ==================== ENUMS ====================
@@ -116,6 +118,12 @@ class SpinHistoryItem(BaseModel):
     class Config:
         from_attributes = True
 
+    @field_serializer('created_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 class SpinHistoryResponse(BaseModel):
     """История спинов с пагинацией."""
@@ -153,6 +161,12 @@ class WheelPrizeAdminResponse(BaseModel):
     class Config:
         from_attributes = True
 
+    @field_serializer('created_at', 'updated_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 class AdminWheelConfigResponse(BaseModel):
     """Полная конфигурация колеса для админа."""
@@ -175,6 +189,12 @@ class AdminWheelConfigResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class UpdateWheelConfigRequest(BaseModel):

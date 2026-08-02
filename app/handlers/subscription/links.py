@@ -51,7 +51,7 @@ async def handle_connect_subscription(callback: types.CallbackQuery, db_user: Us
                         web_app=types.WebAppInfo(url=subscription_link),
                     )
                 ],
-                [InlineKeyboardButton(text=texts.BACK, callback_data='menu_subscription')],
+                [InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')],
             ]
         )
 
@@ -85,7 +85,7 @@ async def handle_connect_subscription(callback: types.CallbackQuery, db_user: Us
                         web_app=types.WebAppInfo(url=settings.MINIAPP_CUSTOM_URL),
                     )
                 ],
-                [InlineKeyboardButton(text=texts.BACK, callback_data='menu_subscription')],
+                [InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')],
             ]
         )
 
@@ -105,7 +105,7 @@ async def handle_connect_subscription(callback: types.CallbackQuery, db_user: Us
         happ_row = get_happ_download_button_row(texts)
         if happ_row:
             rows.append(happ_row)
-        rows.append([InlineKeyboardButton(text=texts.BACK, callback_data='menu_subscription')])
+        rows.append([InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')])
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -131,7 +131,7 @@ async def handle_connect_subscription(callback: types.CallbackQuery, db_user: Us
         happ_row = get_happ_download_button_row(texts)
         if happ_row:
             rows.append(happ_row)
-        rows.append([InlineKeyboardButton(text=texts.BACK, callback_data='menu_subscription')])
+        rows.append([InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')])
 
         keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -165,7 +165,7 @@ async def handle_connect_subscription(callback: types.CallbackQuery, db_user: Us
                 ),
                 reply_markup=InlineKeyboardMarkup(
                     inline_keyboard=[
-                        [InlineKeyboardButton(text=texts.BACK, callback_data='menu_subscription')],
+                        [InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')],
                     ]
                 ),
                 parse_mode='HTML',
@@ -302,7 +302,7 @@ async def handle_open_subscription_link(callback: types.CallbackQuery, db_user: 
                         text=texts.t('CONNECT_BUTTON', '🔗 Подключиться'), callback_data='subscription_connect'
                     )
                 ],
-                [InlineKeyboardButton(text=texts.BACK, callback_data='menu_subscription')],
+                [InlineKeyboardButton(text=texts.BACK, callback_data='back_to_menu')],
             ]
         ),
         parse_mode='HTML',

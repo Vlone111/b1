@@ -3,7 +3,9 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.utils.timezone import format_local_datetime
 
 
 # === Status ===
@@ -51,6 +53,12 @@ class BanUserIPInfo(BaseModel):
     country_name: str | None = None
     city: str | None = None
 
+    @field_serializer('first_seen', 'last_seen')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 class BanUserRequestLog(BaseModel):
     """User request log entry."""
@@ -63,6 +71,12 @@ class BanUserRequestLog(BaseModel):
     action: str | None = None
     node: str | None = None
 
+    @field_serializer('timestamp')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 class BanUserListItem(BaseModel):
     """User in the list."""
@@ -74,6 +88,12 @@ class BanUserListItem(BaseModel):
     is_over_limit: bool = False
     blocked_count: int = 0
     last_seen: datetime | None = None
+
+    @field_serializer('last_seen')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class BanUsersListResponse(BaseModel):
@@ -118,6 +138,12 @@ class BanPunishmentItem(BaseModel):
     enabled_at: datetime | None = None
     node_name: str | None = None
 
+    @field_serializer('punished_at', 'enable_at', 'enabled_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 class BanPunishmentsListResponse(BaseModel):
     """List of active punishments."""
@@ -161,6 +187,12 @@ class BanNodeItem(BaseModel):
     users_count: int = 0
     agent_stats: dict[str, Any] | None = None
 
+    @field_serializer('last_seen')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 class BanNodesListResponse(BaseModel):
     """List of nodes."""
@@ -191,6 +223,12 @@ class BanAgentItem(BaseModel):
     health: str = 'unknown'  # healthy, warning, critical
     is_online: bool = False
     last_report: datetime | None = None
+
+    @field_serializer('last_report')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class BanAgentsSummary(BaseModel):
@@ -252,6 +290,12 @@ class BanTrafficViolationItem(BaseModel):
     bytes_limit: int = 0
     detected_at: datetime
     resolved: bool = False
+
+    @field_serializer('detected_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class BanTrafficViolationsResponse(BaseModel):
@@ -372,6 +416,12 @@ class BanAgentHistoryItem(BaseModel):
     dropped_total: int = 0
     queue_size: int = 0
     batches_total: int = 0
+
+    @field_serializer('timestamp')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class BanAgentHistoryResponse(BaseModel):

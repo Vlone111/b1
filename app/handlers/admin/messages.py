@@ -46,6 +46,7 @@ from app.services.pinned_message_service import (
 from app.states import AdminStates
 from app.utils.decorators import admin_required, error_handler
 from app.utils.miniapp_buttons import BUTTON_KEY_TO_CABINET_PATH, build_miniapp_or_callback_button
+from app.utils.timezone import format_local_datetime
 
 
 logger = structlog.get_logger(__name__)
@@ -260,7 +261,7 @@ async def show_pinned_message_menu(
     if pinned_message:
         content_preview = html.escape(pinned_message.content or '')
         last_updated = pinned_message.updated_at or pinned_message.created_at
-        timestamp_text = last_updated.strftime('%d.%m.%Y %H:%M') if last_updated else '—'
+        timestamp_text = format_local_datetime(last_updated, '%d.%m.%Y %H:%M') if last_updated else '—'
         media_line = ''
         if pinned_message.media_type:
             media_label = 'Фото' if pinned_message.media_type == 'photo' else 'Видео'
@@ -640,7 +641,7 @@ async def show_messages_history(callback: types.CallbackQuery, db_user: User, db
             message_preview = html.escape(message_preview)
 
             text += f"""
-{status_emoji} <b>{broadcast.created_at.strftime('%d.%m.%Y %H:%M')}</b>
+{status_emoji} <b>{format_local_datetime(broadcast.created_at, '%d.%m.%Y %H:%M')}</b>
 📊 Отправлено: {broadcast.sent_count}/{broadcast.total_count} ({success_rate}%)
 🎯 Аудитория: {get_target_name(broadcast.target_type)}
 👤 Админ: {broadcast.admin_name}
@@ -742,6 +743,7 @@ async def select_broadcast_target(callback: types.CallbackQuery, db_user: User, 
         'expiring': 'С истекающей подпиской',
         'expired': 'С истекшей подпиской',
         'active_zero': 'Активная подписка, трафик 0 ГБ',
+        'lapsed': 'Бывшие подписчики (подписка истекла)',
         'trial_zero': 'Триальная подписка, трафик 0 ГБ',
     }
 
@@ -1732,6 +1734,29 @@ async def get_target_users_count(db: AsyncSession, target: str) -> int:
         result = await db.execute(query)
         return result.scalar() or 0
 
+    if target == 'lapsed':
+    # Была любая подписка (триал или платная), но сейчас нет активной
+        subquery_active = (
+            select(Subscription.id)
+            .where(
+                Subscription.user_id == User.id,
+                Subscription.status == SubscriptionStatus.ACTIVE.value,
+            )
+            .exists()
+        )
+        subquery_any = (
+            select(Subscription.id)
+            .where(Subscription.user_id == User.id)
+            .exists()
+        )
+        query = select(sql_func.count(User.id)).where(
+            base_filter,
+            subquery_any,       # хоть одна подписка была
+            ~subquery_active,   # но сейчас нет активной
+        )
+        result = await db.execute(query)
+        return result.scalar() or 0
+
     return 0
 
 
@@ -1918,7 +1943,34 @@ async def get_target_users(db: AsyncSession, target: str) -> list:
             if user.subscription and user.subscription.is_active and user.subscription.tariff_id == tariff_id
         ]
 
-    return []
+    if target == 'lapsed':
+        # Была любая подписка, но сейчас нет активной
+        subquery_active = (
+            select(Subscription.id)
+            .where(
+                Subscription.user_id == User.id,
+                Subscription.status == SubscriptionStatus.ACTIVE.value,
+            )
+            .exists()
+        )
+        subquery_any = (
+            select(Subscription.id)
+            .where(Subscription.user_id == User.id)
+            .exists()
+        )
+        stmt = (
+            select(User)
+            .where(
+                User.status == UserStatus.ACTIVE.value,
+                subquery_any,
+                ~subquery_active,
+            )
+            .distinct()
+        )
+        result = await db.execute(stmt)
+        return result.scalars().all()
+
+    return []  # уже есть
 
 
 async def get_custom_users_count(db: AsyncSession, criteria: str) -> int:
@@ -2028,6 +2080,7 @@ def get_target_name(target_type: str) -> str:
         'custom_inactive_week': 'Неактивные 7+ дней',
         'custom_inactive_month': 'Неактивные 30+ дней',
         'custom_referrals': 'Через рефералов',
+        'lapsed': 'Бывшие подписчики (подписка истекла)',
         'custom_direct': 'Прямая регистрация',
     }
     # Обработка фильтра по тарифу

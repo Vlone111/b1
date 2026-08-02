@@ -6302,7 +6302,7 @@ async def get_tariffs_endpoint(
     promo_group_id = promo_group.id if promo_group else None
 
     # Получаем тарифы, доступные пользователю
-    tariffs = await get_tariffs_for_user(db, promo_group_id)
+    tariffs = await get_tariffs_for_user(db, promo_group_id, user_id=user.id)
 
     # Текущий тариф пользователя
     subscription = getattr(user, 'subscription', None)

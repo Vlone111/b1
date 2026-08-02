@@ -18,6 +18,7 @@ from app.keyboards.admin import (
     get_admin_system_submenu_keyboard,
     get_admin_users_submenu_keyboard,
 )
+from app.utils.timezone import format_local_datetime
 from app.localization.texts import clear_rules_cache, get_texts
 from app.services.support_settings_service import SupportSettingsService
 from app.utils.decorators import admin_required, error_handler
@@ -190,7 +191,7 @@ async def show_support_audit(callback: types.CallbackQuery, db_user: User, db: A
                 if getattr(log, 'is_moderator', False)
                 else texts.t('ADMIN_SUPPORT_AUDIT_ROLE_ADMIN', 'Админ')
             )
-            ts = log.created_at.strftime('%d.%m.%Y %H:%M') if getattr(log, 'created_at', None) else ''
+            ts = format_local_datetime(log.created_at, '%d.%m.%Y %H:%M') if getattr(log, 'created_at', None) else ''
             action_map = {
                 'close_ticket': texts.t('ADMIN_SUPPORT_AUDIT_ACTION_CLOSE_TICKET', 'Закрытие тикета'),
                 'block_user_timed': texts.t('ADMIN_SUPPORT_AUDIT_ACTION_BLOCK_TIMED', 'Блокировка (время)'),
@@ -324,7 +325,7 @@ async def rules_stats_command(message: types.Message, db_user: User, db: AsyncSe
                 text += f'• <code>{lang}</code>: {lang_stats["active_count"]} правил, '
                 text += f'{lang_stats["content_length"]} символов\n'
                 if lang_stats['last_updated']:
-                    text += f'  Обновлено: {lang_stats["last_updated"].strftime("%d.%m.%Y %H:%M")}\n'
+                    text += f'  Обновлено: {format_local_datetime(lang_stats["last_updated"], "%d.%m.%Y %H:%M")}\n'
         else:
             text += 'ℹ️ Активных правил нет - используются правила по умолчанию'
 

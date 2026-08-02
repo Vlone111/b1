@@ -642,6 +642,152 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
             return
         start_parameter = None  # Invalid token, ignore
 
+    # NodaVPN app deep links. Two flavours:
+    #  - plain section:  buy_traffic / renew / tariffs / devices / topup
+    #  - exact purchase: buy_traffic_{gb} / renew_{days} / devices_{total}
+    # The exact flavours land the user ONE tap away from payment: the button
+    # carries the existing purchase callback (add_traffic_N / extend_period_N
+    # charge the balance immediately; on insufficient funds the standard
+    # top-up flow opens with the amount pre-filled and the cart auto-completes
+    # the purchase after payment).
+    if start_parameter and (
+        start_parameter.startswith(('buy_traffic', 'renew', 'devices'))
+        or start_parameter in {'tariffs', 'topup'}
+    ):
+        app_user = db_user or await get_user_by_telegram_id(db, message.from_user.id)
+        if app_user and app_user.status != UserStatus.DELETED.value:
+            texts = get_texts(app_user.language)
+
+            def _num_tail(payload: str, prefix: str) -> int | None:
+                tail = payload[len(prefix):]
+                if tail.startswith('_') and tail[1:].isdigit():
+                    return int(tail[1:])
+                return None
+
+            # renew_{days}_base — «продлить по дефолту»: сперва убрать доп.
+            # устройства (до включённых в тариф), затем продлить дешевле.
+            base_renew = False
+            renew_payload = start_parameter
+            if renew_payload.startswith('renew') and renew_payload.endswith('_base'):
+                base_renew = True
+                renew_payload = renew_payload[: -len('_base')]
+
+            gb = _num_tail(start_parameter, 'buy_traffic')
+            days = _num_tail(renew_payload, 'renew')
+            devices_total = _num_tail(start_parameter, 'devices')
+
+            if gb is not None:
+                # gb == 0 — переход на безлимит (так же, как пакет «0» в боте).
+                gb_label = '♾️ безлимит' if gb == 0 else f'+{gb} ГБ'
+                text = (
+                    '📦 <b>Докупка трафика</b>\n\n'
+                    f'Вы выбрали в приложении: <b>{gb_label}</b>.\n\n'
+                    'Нажмите кнопку — сумма спишется с баланса. Если средств не '
+                    'хватит, бот сразу предложит пополнение на нужную сумму и '
+                    'завершит покупку автоматически.'
+                )
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [types.InlineKeyboardButton(
+                            text=f'✅ Купить {gb_label}',
+                            callback_data=f'add_traffic_{gb}',
+                        )],
+                        [types.InlineKeyboardButton(
+                            text='📦 Другие пакеты', callback_data='buy_traffic')],
+                    ]
+                )
+            elif days is not None and base_renew:
+                # «Продлить по дефолту»: два шага в одном сообщении — сброс
+                # доп. устройств (бесплатно, цена продления пересчитается
+                # автоматически) и само продление.
+                from app.database.crud.subscription import get_subscription_by_user_id
+
+                app_sub = await get_subscription_by_user_id(db, app_user.id)
+                included = settings.DEFAULT_DEVICE_LIMIT
+                if app_sub is not None and app_sub.tariff_id and app_sub.tariff:
+                    included = app_sub.tariff.device_limit or included
+                text = (
+                    '⏰ <b>Продление по базовому тарифу</b>\n\n'
+                    f'Шаг 1 — убрать доп. устройства (останется <b>{included}</b>): '
+                    'бесплатно, продление сразу станет дешевле.\n'
+                    f'Шаг 2 — продлить на <b>{days} дн.</b>'
+                )
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [types.InlineKeyboardButton(
+                            text=f'1️⃣ Оставить {included} устройств',
+                            callback_data=f'change_devices_{included}',
+                        )],
+                        [types.InlineKeyboardButton(
+                            text=f'2️⃣ Продлить на {days} дн.',
+                            callback_data=f'extend_period_{days}',
+                        )],
+                        [types.InlineKeyboardButton(
+                            text='⭐ Моя подписка', callback_data='menu_subscription')],
+                    ]
+                )
+            elif days is not None:
+                text = (
+                    '⏰ <b>Продление подписки</b>\n\n'
+                    f'Вы выбрали в приложении: <b>{days} дн.</b>\n\n'
+                    'Нажмите кнопку — сумма спишется с баланса. Если средств не '
+                    'хватит, бот сразу предложит пополнение на нужную сумму.'
+                )
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [types.InlineKeyboardButton(
+                            text=f'✅ Продлить на {days} дн.',
+                            callback_data=f'extend_period_{days}',
+                        )],
+                        [types.InlineKeyboardButton(
+                            text='⭐ Моя подписка', callback_data='menu_subscription')],
+                    ]
+                )
+            elif devices_total is not None:
+                text = (
+                    '📱 <b>Изменение количества устройств</b>\n\n'
+                    f'Вы выбрали в приложении: <b>до {devices_total} устройств</b>.\n\n'
+                    'Нажмите кнопку — бот покажет точную стоимость и подтвердит '
+                    'покупку.'
+                )
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [types.InlineKeyboardButton(
+                            text=f'✅ До {devices_total} устройств',
+                            callback_data=f'change_devices_{devices_total}',
+                        )],
+                        [types.InlineKeyboardButton(
+                            text='📱 Мои устройства',
+                            callback_data='subscription_change_devices')],
+                    ]
+                )
+            else:
+                # Plain section payloads (no exact item picked in the app).
+                if start_parameter.startswith('buy_traffic'):
+                    section_cb, section_label = 'buy_traffic', '📦 Купить трафик'
+                elif start_parameter == 'devices':
+                    section_cb, section_label = 'subscription_change_devices', '📱 Мои устройства'
+                elif start_parameter == 'topup':
+                    section_cb, section_label = 'balance_topup', '💳 Пополнить баланс'
+                elif start_parameter == 'renew':
+                    # Прямо в меню продления с персональными ценами — юзер
+                    # пришёл из приложения продлеваться, а не смотреть статус.
+                    section_cb, section_label = 'subscription_extend', '⏰ Продлить подписку'
+                elif start_parameter == 'tariffs':
+                    section_cb, section_label = 'menu_buy', '🛒 Купить подписку'
+                else:
+                    section_cb, section_label = 'menu_subscription', '⭐ Моя подписка'
+                text = texts.t('APP_DEEPLINK_OPEN', '🚀 Открываю нужный раздел из приложения NodaVPN:')
+                keyboard = types.InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [types.InlineKeyboardButton(text=section_label, callback_data=section_cb)],
+                    ]
+                )
+            await message.answer(text, reply_markup=keyboard, parse_mode='HTML')
+            return
+        # Unregistered user — ignore the payload and continue normal onboarding.
+        start_parameter = None
+
     if start_parameter:
         campaign = await get_campaign_by_start_parameter(
             db,
@@ -745,11 +891,43 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
 
         texts = get_texts(user.language)
 
-        if referral_code and not user.referred_by_id:
+        # Try to apply referral code if user doesn't have a referrer yet and hasn't made first topup
+        if referral_code and not user.referred_by_id and not user.has_made_first_topup:
+            from app.database.crud.user import get_user_by_referral_code
+
+            referrer = await get_user_by_referral_code(db, referral_code)
+            if referrer and referrer.id != user.id:
+                user.referred_by_id = referrer.id
+                await db.commit()
+                logger.info(
+                    '✅ Реферальный код применен для существующего пользователя',
+                    user_id=user.id,
+                    referrer_id=referrer.id,
+                )
+                try:
+                    bot = message.bot
+                    await process_referral_registration(db, user.id, referrer.id, bot=bot)
+                    await message.answer(
+                        texts.t(
+                            'REFERRAL_CODE_ACCEPTED',
+                            '✅ Реферальный код применен!',
+                        )
+                    )
+                except Exception as e:
+                    logger.error('Ошибка при применении реферального кода', error=e)
+            else:
+                await message.answer(
+                    texts.t(
+                        'REFERRAL_CODE_INVALID',
+                        '❌ Неверный реферальный код',
+                    )
+                )
+        elif referral_code and not user.referred_by_id:
+            # User already made first topup, cannot apply referral code
             await message.answer(
                 texts.t(
                     'ALREADY_REGISTERED_REFERRAL',
-                    'ℹ️ Вы уже зарегистрированы в системе. Реферальная ссылка не может быть применена.',
+                    'ℹ️ Вы уже пополнили баланс. Реферальная ссылка не может быть применена.',
                 )
             )
 
@@ -792,6 +970,16 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
                 subscription_is_active=subscription_is_active,
             )
 
+        # Если у пользователя активна подписка, показываем полную информацию о подписке в главном меню
+        menu_text_to_send = menu_text
+        if user.subscription and subscription_is_active:
+            try:
+                from app.handlers.subscription.purchase import get_subscription_info_text_for_start
+                menu_text_to_send = await get_subscription_info_text_for_start(user, db, texts)
+            except Exception as e:
+                logger.warning('Ошибка при получении текста информации о подписке для /start', error=e)
+                menu_text_to_send = menu_text
+
         keyboard = await get_main_menu_keyboard_async(
             db=db,
             user=user,
@@ -805,7 +993,7 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
             is_moderator=is_moderator,
             custom_buttons=custom_buttons,
         )
-        await message.answer(menu_text, reply_markup=keyboard, parse_mode='HTML')
+        await message.answer(menu_text_to_send, reply_markup=keyboard, parse_mode='HTML')
 
         if pinned_message and not pinned_message.send_before_menu:
             await _send_pinned_message(message.bot, db, user, pinned_message)
@@ -1409,11 +1597,44 @@ async def complete_registration_from_callback(callback: types.CallbackQuery, sta
         texts = get_texts(existing_user.language)
 
         data = await state.get_data() or {}
-        if data.get('referral_code') and not existing_user.referred_by_id:
+        # Try to apply referral code if user doesn't have a referrer yet and hasn't made first topup
+        if data.get('referral_code') and not existing_user.referred_by_id and not existing_user.has_made_first_topup:
+            from app.database.crud.user import get_user_by_referral_code
+
+            referral_code = data.get('referral_code')
+            referrer = await get_user_by_referral_code(db, referral_code)
+            if referrer and referrer.id != existing_user.id:
+                existing_user.referred_by_id = referrer.id
+                await db.commit()
+                logger.info(
+                    '✅ Реферальный код применен для существующего пользователя',
+                    user_id=existing_user.id,
+                    referrer_id=referrer.id,
+                )
+                try:
+                    bot = callback.bot
+                    await process_referral_registration(db, existing_user.id, referrer.id, bot=bot)
+                    await callback.message.answer(
+                        texts.t(
+                            'REFERRAL_CODE_ACCEPTED',
+                            '✅ Реферальный код применен!',
+                        )
+                    )
+                except Exception as e:
+                    logger.error('Ошибка при применении реферального кода', error=e)
+            else:
+                await callback.message.answer(
+                    texts.t(
+                        'REFERRAL_CODE_INVALID',
+                        '❌ Неверный реферальный код',
+                    )
+                )
+        elif data.get('referral_code') and not existing_user.referred_by_id:
+            # User already made first topup, cannot apply referral code
             await callback.message.answer(
                 texts.t(
                     'ALREADY_REGISTERED_REFERRAL',
-                    'ℹ️ Вы уже зарегистрированы в системе. Реферальная ссылка не может быть применена.',
+                    'ℹ️ Вы уже пополнили баланс. Реферальная ссылка не может быть применена.',
                 )
             )
 
@@ -1422,6 +1643,16 @@ async def complete_registration_from_callback(callback: types.CallbackQuery, sta
         has_active_subscription, subscription_is_active = _calculate_subscription_flags(existing_user.subscription)
 
         menu_text = await get_main_menu_text(existing_user, texts, db)
+
+        # Если у пользователя активна подписка, показываем полную информацию о подписке в главном меню
+        menu_text_to_send = menu_text
+        if existing_user.subscription and subscription_is_active:
+            try:
+                from app.handlers.subscription.purchase import get_subscription_info_text_for_start
+                menu_text_to_send = await get_subscription_info_text_for_start(existing_user, db, texts)
+            except Exception as e:
+                logger.warning('Ошибка при получении текста информации о подписке для /start', error=e)
+                menu_text_to_send = menu_text
 
         is_admin = settings.is_admin(existing_user.telegram_id)
         is_moderator = (not is_admin) and SupportSettingsService.is_moderator(existing_user.telegram_id)
@@ -1452,7 +1683,7 @@ async def complete_registration_from_callback(callback: types.CallbackQuery, sta
             )
             if pinned_message and pinned_message.send_before_menu:
                 await _send_pinned_message(callback.bot, db, existing_user, pinned_message)
-            await callback.message.answer(menu_text, reply_markup=keyboard, parse_mode='HTML')
+            await callback.message.answer(menu_text_to_send, reply_markup=keyboard, parse_mode='HTML')
             if pinned_message and not pinned_message.send_before_menu:
                 await _send_pinned_message(callback.bot, db, existing_user, pinned_message)
         except Exception as e:
@@ -1711,11 +1942,44 @@ async def complete_registration(message: types.Message, state: FSMContext, db: A
         texts = get_texts(existing_user.language)
 
         data = await state.get_data() or {}
-        if data.get('referral_code') and not existing_user.referred_by_id:
+        # Try to apply referral code if user doesn't have a referrer yet and hasn't made first topup
+        if data.get('referral_code') and not existing_user.referred_by_id and not existing_user.has_made_first_topup:
+            from app.database.crud.user import get_user_by_referral_code
+
+            referral_code = data.get('referral_code')
+            referrer = await get_user_by_referral_code(db, referral_code)
+            if referrer and referrer.id != existing_user.id:
+                existing_user.referred_by_id = referrer.id
+                await db.commit()
+                logger.info(
+                    '✅ Реферальный код применен для существующего пользователя',
+                    user_id=existing_user.id,
+                    referrer_id=referrer.id,
+                )
+                try:
+                    bot = message.bot
+                    await process_referral_registration(db, existing_user.id, referrer.id, bot=bot)
+                    await message.answer(
+                        texts.t(
+                            'REFERRAL_CODE_ACCEPTED',
+                            '✅ Реферальный код применен!',
+                        )
+                    )
+                except Exception as e:
+                    logger.error('Ошибка при применении реферального кода', error=e)
+            else:
+                await message.answer(
+                    texts.t(
+                        'REFERRAL_CODE_INVALID',
+                        '❌ Неверный реферальный код',
+                    )
+                )
+        elif data.get('referral_code') and not existing_user.referred_by_id:
+            # User already made first topup, cannot apply referral code
             await message.answer(
                 texts.t(
                     'ALREADY_REGISTERED_REFERRAL',
-                    'ℹ️ Вы уже зарегистрированы в системе. Реферальная ссылка не может быть применена.',
+                    'ℹ️ Вы уже пополнили баланс. Реферальная ссылка не может быть применена.',
                 )
             )
 
@@ -1724,6 +1988,16 @@ async def complete_registration(message: types.Message, state: FSMContext, db: A
         has_active_subscription, subscription_is_active = _calculate_subscription_flags(existing_user.subscription)
 
         menu_text = await get_main_menu_text(existing_user, texts, db)
+
+        # Если у пользователя активна подписка, показываем полную информацию о подписке в главном меню
+        menu_text_to_send = menu_text
+        if existing_user.subscription and subscription_is_active:
+            try:
+                from app.handlers.subscription.purchase import get_subscription_info_text_for_start
+                menu_text_to_send = await get_subscription_info_text_for_start(existing_user, db, texts)
+            except Exception as e:
+                logger.warning('Ошибка при получении текста информации о подписке для /start', error=e)
+                menu_text_to_send = menu_text
 
         is_admin = settings.is_admin(existing_user.telegram_id)
         is_moderator = (not is_admin) and SupportSettingsService.is_moderator(existing_user.telegram_id)
@@ -1754,7 +2028,7 @@ async def complete_registration(message: types.Message, state: FSMContext, db: A
             )
             if pinned_message and pinned_message.send_before_menu:
                 await _send_pinned_message(message.bot, db, existing_user, pinned_message)
-            await message.answer(menu_text, reply_markup=keyboard, parse_mode='HTML')
+            await message.answer(menu_text_to_send, reply_markup=keyboard, parse_mode='HTML')
             if pinned_message and not pinned_message.send_before_menu:
                 await _send_pinned_message(message.bot, db, existing_user, pinned_message)
         except Exception as e:
@@ -1992,6 +2266,16 @@ async def complete_registration(message: types.Message, state: FSMContext, db: A
 
         menu_text = await get_main_menu_text(user, texts, db)
 
+        # Если у пользователя активна подписка, показываем полную информацию о подписке в главном меню
+        menu_text_to_send = menu_text
+        if user.subscription and subscription_is_active:
+            try:
+                from app.handlers.subscription.purchase import get_subscription_info_text_for_start
+                menu_text_to_send = await get_subscription_info_text_for_start(user, db, texts)
+            except Exception as e:
+                logger.warning('Ошибка при получении текста информации о подписке для /start', error=e)
+                menu_text_to_send = menu_text
+
         is_admin = settings.is_admin(user.telegram_id)
         is_moderator = (not is_admin) and SupportSettingsService.is_moderator(user.telegram_id)
 
@@ -2020,7 +2304,7 @@ async def complete_registration(message: types.Message, state: FSMContext, db: A
             )
             if pinned_message and pinned_message.send_before_menu:
                 await _send_pinned_message(message.bot, db, user, pinned_message)
-            await message.answer(menu_text, reply_markup=keyboard, parse_mode='HTML')
+            await message.answer(menu_text_to_send, reply_markup=keyboard, parse_mode='HTML')
             logger.info('✅ Главное меню показано пользователю', telegram_id=user.telegram_id)
             if pinned_message and not pinned_message.send_before_menu:
                 await _send_pinned_message(message.bot, db, user, pinned_message)
@@ -2180,10 +2464,23 @@ async def get_main_menu_text(user, texts, db: AsyncSession):
     try:
         random_message = await get_random_active_message(db)
         if random_message:
-            return _insert_random_message(base_text, random_message, action_prompt)
+            base_text = _insert_random_message(base_text, random_message, action_prompt)
 
     except Exception as e:
         logger.error('Ошибка получения случайного сообщения', error=e)
+
+    try:
+        from app.handlers.contests import build_main_menu_contest_block
+
+        contest_block = await build_main_menu_contest_block(db, getattr(user, 'id', None))
+        if contest_block:
+            base_text = f'{base_text}\n{contest_block}'
+    except Exception as contest_error:
+        logger.debug(
+            'Не удалось построить блок конкурса для главного меню',
+            user_id=getattr(user, 'id', None),
+            error=contest_error,
+        )
 
     return base_text
 
@@ -2200,10 +2497,19 @@ async def get_main_menu_text_simple(user_name, texts, db: AsyncSession):
     try:
         random_message = await get_random_active_message(db)
         if random_message:
-            return _insert_random_message(base_text, random_message, action_prompt)
+            base_text = _insert_random_message(base_text, random_message, action_prompt)
 
     except Exception as e:
         logger.error('Ошибка получения случайного сообщения', error=e)
+
+    try:
+        from app.handlers.contests import build_main_menu_contest_block
+
+        contest_block = await build_main_menu_contest_block(db, None)
+        if contest_block:
+            base_text = f'{base_text}\n{contest_block}'
+    except Exception as contest_error:
+        logger.debug('Не удалось построить блок конкурса для главного меню (simple)', error=contest_error)
 
     return base_text
 

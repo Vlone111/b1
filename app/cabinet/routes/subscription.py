@@ -250,6 +250,34 @@ async def get_subscription(
         # Return 200 with has_subscription: false instead of 404
         return SubscriptionStatusResponse(has_subscription=False, subscription=None)
 
+    # Живой трафик из панели, не из нашей таблицы: фоновая синхронизация
+    # может отставать на часы, и клиенты, читающие Remnawave напрямую (Happ),
+    # показывали другие цифры, чем приложение («докупил трафик — числа не
+    # сходятся»). Кнопка «Обновить» в приложении бьёт именно в этот роут, так
+    # что здесь данные обязаны быть свежими. Панель недоступна — тихо отдаём
+    # значения из базы, как раньше.
+    if fresh_user.remnawave_uuid:
+        try:
+            from app.services.remnawave_service import RemnaWaveService
+
+            stats = await RemnaWaveService().get_user_traffic_stats_by_uuid(fresh_user.remnawave_uuid)
+            if stats:
+                sub = fresh_user.subscription
+                live_used = float(stats.get('used_traffic_gb') or 0.0)
+                live_limit = int(stats.get('traffic_limit_gb') or 0)
+                changed = False
+                if abs((sub.traffic_used_gb or 0.0) - live_used) > 0.01:
+                    sub.traffic_used_gb = live_used
+                    changed = True
+                if live_limit and (sub.traffic_limit_gb or 0) != live_limit:
+                    sub.traffic_limit_gb = live_limit
+                    changed = True
+                if changed:
+                    await db.commit()
+                    await db.refresh(fresh_user.subscription)
+        except Exception:
+            pass  # панель прилегла — не роняем кабинет из-за косметики
+
     # Load tariff for daily subscription check and tariff name
     tariff_name = None
     if fresh_user.subscription.tariff_id:
@@ -319,10 +347,19 @@ async def get_renewal_options(
         return []
 
     # Determine available periods
-    if subscription.tariff_id and subscription.tariff and subscription.tariff.period_prices:
-        periods = sorted(int(k) for k in subscription.tariff.period_prices.keys())
+    tariff = subscription.tariff if subscription.tariff_id else None
+    if tariff and tariff.period_prices:
+        periods = sorted(int(k) for k in tariff.period_prices.keys())
     else:
         periods = settings.get_available_renewal_periods()
+
+    # Devices context: how many are included by the tariff and how many the
+    # user bought on top (they make the renewal price higher).
+    if tariff:
+        included_devices = tariff.device_limit or 0
+    else:
+        included_devices = settings.DEFAULT_DEVICE_LIMIT
+    extra_devices = max(0, (subscription.device_limit or 0) - included_devices)
 
     options = []
 
@@ -337,6 +374,19 @@ async def get_renewal_options(
         if original_price > 0 and original_price != pricing.final_total:
             combined_discount = int((original_price - pricing.final_total) * 100 / original_price)
 
+        # Cheaper variant: renew with only the included devices (drop extras).
+        # Exact in tariff mode via the same engine; omitted in classic mode.
+        base_variant = None
+        if tariff and extra_devices > 0:
+            try:
+                base_pricing = await pricing_engine.calculate_tariff_purchase_price(
+                    tariff, period, user=user
+                )
+                if 0 < base_pricing.final_total < pricing.final_total:
+                    base_variant = base_pricing.final_total
+            except Exception:  # noqa: BLE001 - price hint must never break the list
+                base_variant = None
+
         options.append(
             RenewalOptionResponse(
                 period_days=period,
@@ -344,6 +394,12 @@ async def get_renewal_options(
                 price_rubles=pricing.final_total / 100,
                 discount_percent=combined_discount,
                 original_price_kopeks=original_price if combined_discount > 0 else None,
+                base_price_kopeks=pricing.base_price,
+                devices_price_kopeks=pricing.devices_price,
+                traffic_price_kopeks=pricing.traffic_price,
+                included_devices=included_devices,
+                extra_devices=extra_devices,
+                base_variant_price_kopeks=base_variant,
             )
         )
 
@@ -1596,7 +1652,7 @@ async def get_purchase_options(
                 # Fallback to legacy promo_group attribute
                 promo_group = getattr(user, 'promo_group', None)
             promo_group_id = promo_group.id if promo_group else None
-            tariffs = await get_tariffs_for_user(db, promo_group_id)
+            tariffs = await get_tariffs_for_user(db, promo_group_id, user_id=user.id)
 
             subscription = await get_subscription_by_user_id(db, user.id)
             current_tariff_id = subscription.tariff_id if subscription else None

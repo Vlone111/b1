@@ -4,7 +4,9 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.utils.timezone import format_local_datetime
 
 
 class UserStatusEnum(StrEnum):
@@ -50,6 +52,12 @@ class TrafficPurchaseItem(BaseModel):
     days_remaining: int
     is_expired: bool
 
+    @field_serializer('expires_at', 'created_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 class UserSubscriptionInfo(BaseModel):
     """User subscription information."""
@@ -69,6 +77,12 @@ class UserSubscriptionInfo(BaseModel):
     days_remaining: int = 0
     purchased_traffic_gb: int = 0
     traffic_purchases: list[TrafficPurchaseItem] = []
+
+    @field_serializer('start_date', 'end_date')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class UserPromoGroupInfo(BaseModel):
@@ -116,6 +130,12 @@ class UserListItem(BaseModel):
     restriction_topup: bool = False
     restriction_subscription: bool = False
 
+    @field_serializer('created_at', 'last_activity', 'subscription_end_date')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 class UsersListResponse(BaseModel):
     """Paginated list of users."""
@@ -140,6 +160,12 @@ class UserTransactionItem(BaseModel):
     payment_method: str | None = None
     is_completed: bool = True
     created_at: datetime
+
+    @field_serializer('created_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class UserReferralInfo(BaseModel):
@@ -213,6 +239,12 @@ class UserDetailResponse(BaseModel):
     # Remnawave UUID
     remnawave_uuid: str | None = None
 
+    @field_serializer('created_at', 'updated_at', 'last_activity', 'cabinet_last_login', 'promo_offer_discount_expires_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 # === Panel Info ===
 
@@ -233,6 +265,12 @@ class UserPanelInfoResponse(BaseModel):
     online_at: datetime | None = None
     last_connected_node_uuid: str | None = None
     last_connected_node_name: str | None = None
+
+    @field_serializer('first_connected_at', 'online_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 # === Node Usage ===
@@ -558,6 +596,12 @@ class PanelUserInfo(BaseModel):
     subscription_url: str | None = None
     active_squads: list[str] = []
 
+    @field_serializer('expire_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 class SyncFromPanelRequest(BaseModel):
     """Request to sync user from panel."""
@@ -628,6 +672,12 @@ class PanelSyncStatusResponse(BaseModel):
     # Differences
     has_differences: bool = False
     differences: list[str] = []
+
+    @field_serializer('last_sync', 'bot_subscription_end_date', 'panel_expire_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 # === Admin User Management Actions ===
@@ -725,6 +775,12 @@ class AdminUserGiftItem(BaseModel):
     created_at: datetime | None = None
     paid_at: datetime | None = None
     delivered_at: datetime | None = None
+
+    @field_serializer('created_at', 'paid_at', 'delivered_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class AdminUserGiftsResponse(BaseModel):

@@ -47,6 +47,7 @@ from app.services.user_service import UserService
 from app.states import AdminStates
 from app.utils.decorators import admin_required, error_handler
 from app.utils.formatters import format_datetime, format_time_ago
+from app.utils.timezone import format_local_datetime
 from app.utils.subscription_utils import (
     resolve_hwid_device_limit_for_payload,
 )
@@ -2729,7 +2730,7 @@ async def show_user_statistics(callback: types.CallbackQuery, db_user: User, db:
     elif campaign_registration and campaign_registration.campaign:
         text += f'• Регистрация через рекламную кампанию <b>{campaign_registration.campaign.name}</b>\n'
         if campaign_registration.created_at:
-            text += f'• Дата регистрации по кампании: {campaign_registration.created_at.strftime("%d.%m.%Y %H:%M")}\n'
+            text += f'• Дата регистрации по кампании: {format_local_datetime(campaign_registration.created_at, "%d.%m.%Y %H:%M")}\n'
     else:
         text += '• Прямая регистрация\n'
 
@@ -4713,7 +4714,7 @@ async def admin_buy_tariff(callback: types.CallbackQuery, db_user: User, db: Asy
     # Получаем доступные тарифы
     from app.database.crud.tariff import get_tariffs_for_user
 
-    tariffs = await get_tariffs_for_user(db, target_user)
+    tariffs = await get_tariffs_for_user(db, getattr(target_user, 'promo_group_id', None), user_id=target_user.id)
 
     if not tariffs:
         await callback.message.edit_text(

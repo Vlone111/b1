@@ -257,6 +257,8 @@ class Settings(BaseSettings):
     # Конкурсы (глобальный флаг, будет расширяться под разные типы)
     CONTESTS_ENABLED: bool = False
     CONTESTS_BUTTON_VISIBLE: bool = False
+    # Скрывать кнопку "Конкурсы" в главном меню, когда нет ни одного активного конкурса
+    CONTESTS_BUTTON_HIDE_WHEN_EMPTY: bool = False
     # Для обратной совместимости со старыми конфигами
     REFERRAL_CONTESTS_ENABLED: bool = False
 
@@ -378,7 +380,9 @@ class Settings(BaseSettings):
     NALOGO_STORAGE_PATH: str = './nalogo_tokens.json'
     NALOGO_PROXY_URL: str | None = None  # SOCKS proxy for nalog.ru; falls back to PROXY_URL if not set
 
-    AUTO_PURCHASE_AFTER_TOPUP_ENABLED: bool = False
+    # Пополнил → сохранённая корзина списывается и подключается сама, без
+    # лишних кликов. Выключать только если нужен ручной confirm после оплаты.
+    AUTO_PURCHASE_AFTER_TOPUP_ENABLED: bool = True
 
     # Отключение превью ссылок в сообщениях бота
     DISABLE_WEB_PAGE_PREVIEW: bool = False

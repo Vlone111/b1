@@ -1,5 +1,7 @@
 from datetime import UTC, datetime
 
+from app.utils.timezone import format_local_datetime
+
 
 def format_datetime(dt: datetime | str, format_str: str = '%d.%m.%Y %H:%M') -> str:
     if isinstance(dt, str):
@@ -11,7 +13,7 @@ def format_datetime(dt: datetime | str, format_str: str = '%d.%m.%Y %H:%M') -> s
             except (ValueError, AttributeError):
                 dt = datetime.now(UTC)
 
-    return dt.strftime(format_str)
+    return format_local_datetime(dt, format_str)
 
 
 def format_date(dt: datetime | str, format_str: str = '%d.%m.%Y') -> str:
@@ -24,7 +26,7 @@ def format_date(dt: datetime | str, format_str: str = '%d.%m.%Y') -> str:
             except (ValueError, AttributeError):
                 dt = datetime.now(UTC)
 
-    return dt.strftime(format_str)
+    return format_local_datetime(dt, format_str)
 
 
 def format_time_ago(dt: datetime | str, language: str = 'ru') -> str:

@@ -2,7 +2,9 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
+
+from app.utils.timezone import format_local_datetime
 
 
 class ReferralInfoResponse(BaseModel):
@@ -31,6 +33,12 @@ class ReferralItemResponse(BaseModel):
     has_subscription: bool
     has_paid: bool
 
+    @field_serializer('created_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
+
 
 class ReferralListResponse(BaseModel):
     """Paginated referral list."""
@@ -56,6 +64,12 @@ class ReferralEarningResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    @field_serializer('created_at')
+    def serialize_datetime(self, value: datetime) -> str | None:
+        if value is None:
+            return None
+        return format_local_datetime(value, '%Y-%m-%dT%H:%M:%S')
 
 
 class ReferralEarningsListResponse(BaseModel):

@@ -18,6 +18,7 @@ from app.keyboards.inline import (
 from app.localization.texts import get_texts
 from app.states import BalanceStates
 from app.utils.decorators import error_handler
+from app.utils.timezone import format_local_datetime
 
 
 logger = structlog.get_logger(__name__)
@@ -234,7 +235,7 @@ async def show_balance_history(callback: types.CallbackQuery, db_user: User, db:
 
         text += f'{emoji} {amount_text}\n'
         text += f'📝 {transaction.description}\n'
-        text += f'📅 {transaction.created_at.strftime("%d.%m.%Y %H:%M")}\n\n'
+        text += f'📅 {format_local_datetime(transaction.created_at, "%d.%m.%Y %H:%M")}\n\n'
 
     keyboard = []
     total_pages = (total_unique + TRANSACTIONS_PER_PAGE - 1) // TRANSACTIONS_PER_PAGE
