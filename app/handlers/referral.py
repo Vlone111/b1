@@ -540,8 +540,14 @@ async def create_invite_message(callback: types.CallbackQuery, db_user: User):
         cabinet_block=cabinet_block,
     )
 
-    # NodaVPN: сохраняем кнопку «Поделиться» — апстрим убрал её в 3.42.0
-    share_text = invite_text
+    # NodaVPN: сохраняем кнопку «Поделиться» — апстрим убрал её в 3.42.0.
+    # В switch_inline_query уходит ПЛОСКИЙ текст без HTML, поэтому собираем
+    # его из шаблона отдельно, а не берём invite_html с тегами <code>.
+    share_text = invite_template.format(
+        bonus_block=bonus_block,
+        link=bot_referral_link,
+        cabinet_block=f'\n\n🌐 {cabinet_referral_link}' if cabinet_referral_link else '',
+    )
     if len(share_text) > 256:
         share_text = texts.t('REFERRAL_INVITE_TITLE', '🎉 Присоединяйся к VPN сервису!') + f'\n\n👇 {bot_referral_link}'
         if cabinet_referral_link and len(share_text) + len(cabinet_referral_link) + 5 <= 256:

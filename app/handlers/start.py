@@ -1597,6 +1597,10 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
         user_subs = getattr(user, 'subscriptions', None) or []
         first_sub = next((s for s in user_subs if s.is_active), user_subs[0] if user_subs else None)
 
+        # Апстрим с 3.64 строит текст меню внутри try_answer_rich_main_menu; нам он
+        # нужен как база, поверх которой ложится карточка подписки.
+        menu_text = await get_main_menu_text(user, texts, db)
+
         # Если у пользователя активна подписка, показываем полную информацию о подписке в главном меню
         menu_text_to_send = menu_text
         if user.subscription and subscription_is_active:
@@ -3055,6 +3059,11 @@ async def get_main_menu_text(user, texts, db: AsyncSession):
     # stale formatter, so /start showed the legacy "💎 Активна" status until the
     # user navigated away and back. See app/handlers/menu.py get_main_menu_text.
     from app.handlers.menu import get_main_menu_text as build_menu_text
+
+    # Апстрим с 3.61 вынес обе подсказки в app/utils/promo_offer.py
+    from app.utils.promo_offer import build_promo_offer_hint, build_test_access_hint
+
+    base_text = await build_menu_text(user, texts, db)
 
     action_prompt = texts.t('MAIN_MENU_ACTION_PROMPT', 'Выберите действие:')
 

@@ -1027,7 +1027,11 @@ class MenuLayoutService:
         open_mode = button_config.get('open_mode', 'callback')
         webapp_url = button_config.get('webapp_url')
         icon = button_config.get('icon', '')
+        # Апстрим в 3.55 переименовал переменную в custom_emoji_id и обращается к ней
+        # в местах, которые смержились автоматически. Держим оба имени, чтобы не
+        # править вперемешку чужой код и не потерять наш style.
         icon_custom_emoji_id = button_config.get('icon_custom_emoji_id') or None
+        custom_emoji_id = icon_custom_emoji_id
         style = button_config.get('style') or None
         # Логирование для отладки кнопки connect
         is_connect_button = (
