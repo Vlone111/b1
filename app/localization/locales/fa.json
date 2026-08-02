@@ -1332,7 +1332,7 @@
     "REFERRAL_EARNING_REASON_FIRST_TOPUP": "🎉 اولین شارژ",
     "REFERRAL_INFO": "🤝 <b>دعوت دوستان</b>\n\nلینک دعوت را به اشتراک بگذارید و از هر خرید کمیسیون بگیرید!",
     "REFERRAL_INVITE_BONUS": "💎 با اولین شارژ از {minimum} مبلغ {bonus} پاداش دریافت می‌کنی!",
-    "REFERRAL_INVITE_CREATED_INSTRUCTION": "روی متن زیر بزنید تا کپی شود:",
+    "REFERRAL_INVITE_CREATED_INSTRUCTION": "دکمه «📤 اشتراک‌گذاری» را بزنید یا متن زیر را کپی کنید:",
     "REFERRAL_INVITE_CREATED_TITLE": "📝 <b>دعوت‌نامه ایجاد شد!</b>",
     "REFERRAL_INVITE_FEATURE_FAST": "🚀 اتصال سریع",
     "REFERRAL_INVITE_FEATURE_SECURE": "🔒 امنیت بالا",
