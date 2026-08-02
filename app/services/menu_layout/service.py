@@ -352,6 +352,8 @@ class MenuLayoutService:
             button['open_mode'] = updates['open_mode']
         if 'webapp_url' in updates:
             button['webapp_url'] = updates['webapp_url']
+        if 'icon_custom_emoji_id' in updates:
+            button['icon_custom_emoji_id'] = updates['icon_custom_emoji_id']
 
         buttons[actual_button_id] = button
         config['buttons'] = buttons
@@ -1047,8 +1049,10 @@ class MenuLayoutService:
         if not text:
             return None
 
-        # Добавляем иконку если есть и текст не начинается с неё
-        if icon and not text.startswith(icon):
+        # Добавляем юникод-иконку если есть и текст не начинается с неё.
+        # Если параллельно задан icon_custom_emoji_id — Telegram сам рендерит кастом emoji
+        # слева, и юникод-icon вызвал бы дубль (две иконки), поэтому пропускаем.
+        if icon and not custom_emoji_id and not text.startswith(icon):
             text = f'{icon} {text}'
 
         # Форматируем динамический текст
@@ -1057,9 +1061,13 @@ class MenuLayoutService:
 
         # Строим кнопку в зависимости от типа
         if button_type == 'url':
-            return InlineKeyboardButton(text=text, url=action)
+            return InlineKeyboardButton(text=text, url=action, icon_custom_emoji_id=custom_emoji_id)
         if button_type == 'mini_app':
-            return InlineKeyboardButton(text=text, web_app=types.WebAppInfo(url=action))
+            return InlineKeyboardButton(
+                text=text,
+                web_app=types.WebAppInfo(url=action),
+                icon_custom_emoji_id=custom_emoji_id,
+            )
         if button_type == 'callback':
             # Кастомная кнопка с callback_data
             return InlineKeyboardButton(text=text, callback_data=action, icon_custom_emoji_id=icon_custom_emoji_id, style=style)
@@ -1088,7 +1096,11 @@ class MenuLayoutService:
             # Проверяем, что это действительно URL
             if url and (url.startswith('http://') or url.startswith('https://')):
                 logger.info('🔗 Кнопка connect: open_mode=direct, используем URL: ...', url=url[:50])
-                return InlineKeyboardButton(text=text, web_app=types.WebAppInfo(url=url))
+                return InlineKeyboardButton(
+                    text=text,
+                    web_app=types.WebAppInfo(url=url),
+                    icon_custom_emoji_id=custom_emoji_id,
+                )
             logger.warning(
                 '🔗 Кнопка connect: open_mode=direct, но URL не найден. webapp_url=, action=, subscription_url',
                 webapp_url=webapp_url,
