@@ -2086,7 +2086,12 @@ async def toggle_daily_subscription_pause(
 
 
 async def get_active_subscriptions_by_user_id(db: AsyncSession, user_id: int) -> list[Subscription]:
-    """Get all active/trial subscriptions for a user."""
+    """Get all active/trial/limited subscriptions for a user.
+
+    Includes LIMITED status because those subscriptions still have time remaining
+    (just ran out of traffic) and should be treated as "alive" for renewal,
+    duplicate prevention, and display purposes.
+    """
     result = await db.execute(
         select(Subscription)
         .options(
@@ -2095,7 +2100,13 @@ async def get_active_subscriptions_by_user_id(db: AsyncSession, user_id: int) ->
         )
         .where(
             Subscription.user_id == user_id,
-            Subscription.status.in_([SubscriptionStatus.ACTIVE.value, SubscriptionStatus.TRIAL.value]),
+            Subscription.status.in_(
+                [
+                    SubscriptionStatus.ACTIVE.value,
+                    SubscriptionStatus.TRIAL.value,
+                    SubscriptionStatus.LIMITED.value,
+                ]
+            ),
         )
         .order_by(Subscription.created_at.desc())
     )
@@ -2132,7 +2143,11 @@ async def get_subscription_by_id(db: AsyncSession, subscription_id: int) -> Subs
 
 
 async def get_subscription_by_user_and_tariff(db: AsyncSession, user_id: int, tariff_id: int) -> Subscription | None:
-    """Get active/trial subscription for a specific user+tariff combination."""
+    """Get active/trial/limited subscription for a specific user+tariff combination.
+
+    Includes LIMITED status because those subscriptions still have time remaining
+    (just ran out of traffic) and should be extended rather than duplicated.
+    """
     result = await db.execute(
         select(Subscription)
         .options(
@@ -2142,7 +2157,13 @@ async def get_subscription_by_user_and_tariff(db: AsyncSession, user_id: int, ta
         .where(
             Subscription.user_id == user_id,
             Subscription.tariff_id == tariff_id,
-            Subscription.status.in_([SubscriptionStatus.ACTIVE.value, SubscriptionStatus.TRIAL.value]),
+            Subscription.status.in_(
+                [
+                    SubscriptionStatus.ACTIVE.value,
+                    SubscriptionStatus.TRIAL.value,
+                    SubscriptionStatus.LIMITED.value,
+                ]
+            ),
         )
         .order_by(Subscription.created_at.desc())
         .limit(1)
