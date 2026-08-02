@@ -1,4 +1,5 @@
 import html as html_mod
+import math
 from datetime import UTC, datetime
 
 from aiogram import types
@@ -344,7 +345,7 @@ async def confirm_change_devices(
 
         # Считаем стоимость по оставшимся дням подписки
         now = datetime.now(UTC)
-        days_left = max(1, (subscription.end_date - now).days)
+        days_left = max(1, math.ceil((subscription.end_date - now).total_seconds() / 86400))
         period_hint_days = days_left
 
         devices_discount_percent = PricingEngine.get_addon_discount_percent(
@@ -573,7 +574,7 @@ async def execute_change_devices(
             chargeable_devices = devices_difference
 
         devices_price_per_month = chargeable_devices * price_per_device
-        days_left = max(1, (subscription.end_date - datetime.now(UTC)).days)
+        days_left = max(1, math.ceil((subscription.end_date - datetime.now(UTC)).total_seconds() / 86400))
         devices_discount_percent = PricingEngine.get_addon_discount_percent(
             db_user,
             'devices',
@@ -602,7 +603,7 @@ async def execute_change_devices(
                 )
                 return
 
-            charged_days = max(1, (subscription.end_date - datetime.now(UTC)).days)
+            charged_days = max(1, math.ceil((subscription.end_date - datetime.now(UTC)).total_seconds() / 86400))
             await create_transaction(
                 db=db,
                 user_id=db_user.id,
@@ -1254,7 +1255,7 @@ async def confirm_add_devices(callback: types.CallbackQuery, db_user: User, db: 
     if is_daily_tariff:
         # Для суточных тарифов считаем по дням (как в кабинете)
         now = datetime.now(UTC)
-        days_left = max(1, (subscription.end_date - now).days)
+        days_left = max(1, math.ceil((subscription.end_date - now).total_seconds() / 86400))
         period_hint_days = days_left
 
         devices_discount_percent = PricingEngine.get_addon_discount_percent(
@@ -1275,7 +1276,7 @@ async def confirm_add_devices(callback: types.CallbackQuery, db_user: User, db: 
     else:
         # Для обычных тарифов - по дням (как в кабинете)
         now = datetime.now(UTC)
-        days_left = max(1, (subscription.end_date - now).days)
+        days_left = max(1, math.ceil((subscription.end_date - now).total_seconds() / 86400))
         period_hint_days = days_left
 
         devices_discount_percent = PricingEngine.get_addon_discount_percent(
