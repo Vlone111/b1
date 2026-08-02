@@ -155,6 +155,9 @@ async def main():
         ]
     )
 
+    for insecure_default_warning in settings.collect_insecure_default_warnings():
+        logger.warning('⚠️ Insecure configuration default', detail=insecure_default_warning)
+
     async with timeline.stage('Подготовка локализаций', '🗂️', success_message='Шаблоны локализаций готовы') as stage:
         try:
             ensure_locale_templates()
@@ -270,10 +273,16 @@ async def main():
         ) as stage:
             try:
                 from app.database.database import AsyncSessionLocal
-                from app.services.payment_method_config_service import ensure_payment_method_configs
+                from app.services.payment_method_config_service import (
+                    ensure_payment_method_configs,
+                    refresh_display_name_overrides,
+                )
 
                 async with AsyncSessionLocal() as db:
                     await ensure_payment_method_configs(db)
+                    # Warm the display-name override cache so bot keyboards show
+                    # cabinet-configured method names (matches the cabinet).
+                    await refresh_display_name_overrides(db)
             except Exception as error:
                 stage.warning(f'Не удалось инициализировать платёжные методы: {error}')
                 logger.error('❌ Не удалось инициализировать платёжные методы', error=error)
