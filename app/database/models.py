@@ -933,13 +933,6 @@ class PromoGroup(Base):
         if period_days in discounts:
             return discounts[period_days]
 
-        # For daily tariffs (period_days=1): fallback to the smallest configured period discount.
-        # Admins configure discounts for standard periods (30, 90, 180, 360) but not for daily.
-        # If all periods have 100% discount, daily should too.
-        if period_days <= 1 and discounts:
-            smallest_period = min(discounts)
-            return discounts[smallest_period]
-
         if self.is_default:
             try:
                 from app.config import settings
@@ -1264,7 +1257,7 @@ class User(Base):
     user_promo_groups = relationship('UserPromoGroup', back_populates='user', cascade='all, delete-orphan')
     poll_responses = relationship('PollResponse', back_populates='user')
     admin_roles_rel = relationship('UserRole', foreign_keys='[UserRole.user_id]', back_populates='user')
-    notification_settings = Column(JSON, nullable=True, default=dict)
+    notification_settings = Column(JSONB, nullable=True, default=dict)
     last_pinned_message_id = Column(Integer, nullable=True)
 
     # Ограничения пользователя
