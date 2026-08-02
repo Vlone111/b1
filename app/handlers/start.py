@@ -1509,9 +1509,10 @@ async def cmd_start(message: types.Message, state: FSMContext, db: AsyncSession,
         texts = get_texts(user.language)
 
         # Try to apply referral code if user doesn't have a referrer yet and hasn't made first topup
+        # NB: get_user_by_referral_code импортируется на уровне модуля. Локальный импорт
+        # здесь делал имя локальным для всей функции, и обращение к нему выше (реферальный
+        # код на /start) падало с UnboundLocalError.
         if referral_code and not user.referred_by_id and not user.has_made_first_topup:
-            from app.database.crud.user import get_user_by_referral_code
-
             referrer = await get_user_by_referral_code(db, referral_code)
             if referrer and referrer.id != user.id:
                 user.referred_by_id = referrer.id
