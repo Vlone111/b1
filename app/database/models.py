@@ -933,6 +933,13 @@ class PromoGroup(Base):
         if period_days in discounts:
             return discounts[period_days]
 
+        # For daily tariffs (period_days=1): fallback to the smallest configured period discount.
+        # Admins configure discounts for standard periods (30, 90, 180, 360) but not for daily.
+        # If all periods have 100% discount, daily should too.
+        if period_days <= 1 and discounts:
+            smallest_period = min(discounts)
+            return discounts[smallest_period]
+
         if self.is_default:
             try:
                 from app.config import settings
@@ -1204,6 +1211,8 @@ class User(Base):
     password_reset_token = Column(String(255), nullable=True)
     password_reset_expires = Column(AwareDateTime(), nullable=True)
     cabinet_last_login = Column(AwareDateTime(), nullable=True)
+    # Campaign slug saved at registration, consumed at email verification
+    pending_campaign_slug = Column(String(64), nullable=True)
     # Email change fields
     email_change_new = Column(String(255), nullable=True)  # New email pending verification
     email_change_code = Column(String(6), nullable=True)  # 6-digit verification code
@@ -1357,7 +1366,7 @@ class Subscription(Base):
             'user_id',
             'tariff_id',
             unique=True,
-            postgresql_where=text("tariff_id IS NOT NULL AND status IN ('active', 'trial')"),
+            postgresql_where=text("tariff_id IS NOT NULL AND status IN ('active', 'trial', 'limited')"),
         ),
     )
 
@@ -2237,6 +2246,9 @@ class BroadcastHistory(Base):
     admin_name = Column(String(255))
     created_at = Column(AwareDateTime(), server_default=func.now())
     completed_at = Column(AwareDateTime(), nullable=True)
+
+    # Broadcast category for user notification preferences filtering
+    category = Column(String(20), default='system', nullable=False)  # system|news|promo
 
     # Email broadcast fields
     channel = Column(String(20), default='telegram', nullable=False)  # telegram|email|both

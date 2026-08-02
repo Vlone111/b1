@@ -120,6 +120,7 @@ class BroadcastCreateRequest(BaseModel):
     selected_buttons: list[str] = Field(default_factory=lambda: ['home'])
     custom_buttons: list[CustomBroadcastButton] = Field(default_factory=list, max_length=10)
     media: BroadcastMediaRequest | None = None
+    category: str = Field(default='system', pattern='^(system|news|promo)$')
 
 
 # ============ Response ============
@@ -145,6 +146,9 @@ class BroadcastResponse(BaseModel):
     created_at: datetime
     completed_at: datetime | None = None
     progress_percent: float = 0.0
+
+    # Category for user notification preference filtering
+    category: str = 'system'  # system|news|promo
 
     # Email/channel fields
     channel: str = 'telegram'  # telegram|email|both
@@ -219,6 +223,9 @@ class CombinedBroadcastCreateRequest(BaseModel):
     selected_buttons: list[str] = Field(default_factory=lambda: ['home'])
     custom_buttons: list[CustomBroadcastButton] = Field(default_factory=list, max_length=10)
     media: BroadcastMediaRequest | None = None
+
+    # Broadcast category for user notification preference filtering
+    category: str = Field(default='system', pattern='^(system|news|promo)$')
 
     # Email-specific fields
     email_subject: str | None = Field(default=None, max_length=255)

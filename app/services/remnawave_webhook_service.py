@@ -60,6 +60,7 @@ _TEXT_KEY_TO_NOTIFICATION_TYPE: dict[str, NotificationType] = {
     'WEBHOOK_USER_NOT_CONNECTED': NotificationType.WEBHOOK_USER_NOT_CONNECTED,
     'WEBHOOK_DEVICE_ADDED': NotificationType.WEBHOOK_DEVICE_ADDED,
     'WEBHOOK_DEVICE_DELETED': NotificationType.WEBHOOK_DEVICE_DELETED,
+    'WEBHOOK_TORRENT_DETECTED': NotificationType.WEBHOOK_TORRENT_DETECTED,
 }
 
 # Mapping from locale text_key to the Settings toggle that controls it
@@ -1303,6 +1304,13 @@ class RemnaWaveWebhookService:
     async def _handle_bandwidth_threshold(
         self, db: AsyncSession, user: User, subscription: Subscription | None, data: dict
     ) -> None:
+        # Respect user notification preferences
+        from app.utils.notification_prefs import is_traffic_warning_enabled
+
+        if not is_traffic_warning_enabled(user):
+            logger.debug('Traffic warning disabled by user prefs', user_id=user.id)
+            return
+
         # Extract threshold percentage from meta or data
         percent = data.get('thresholdPercent') or data.get('threshold', '')
         if not percent:
