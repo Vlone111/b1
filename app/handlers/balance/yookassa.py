@@ -255,7 +255,7 @@ async def process_yookassa_payment_amount(
 
         await state.clear()
         logger.info(
-            'Создан платеж YooKassa для пользователя ₽, ID',
+            'Создан платеж YooKassa',
             telegram_id=db_user.telegram_id,
             value=amount_kopeks // 100,
             payment_result=payment_result['yookassa_payment_id'],
@@ -500,7 +500,7 @@ async def process_yookassa_sbp_payment_amount(
 
         await state.clear()
         logger.info(
-            'Создан платеж YooKassa СБП для пользователя ₽, ID',
+            'Создан платеж YooKassa СБП',
             telegram_id=db_user.telegram_id,
             value=amount_kopeks // 100,
             payment_result=payment_result['yookassa_payment_id'],

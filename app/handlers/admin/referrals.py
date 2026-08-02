@@ -1339,7 +1339,7 @@ async def receive_log_file(message: types.Message, db_user: User, db: AsyncSessi
         file = await message.bot.get_file(message.document.file_id)
         await message.bot.download_file(file.file_path, temp_file_path)
 
-        logger.info('📥 Файл загружен: ( байт)', temp_file_path=temp_file_path, file_size=message.document.file_size)
+        logger.info('📥 Файл загружен', temp_file_path=temp_file_path, file_size=message.document.file_size)
 
         # Обновляем статус
         await status_message.edit_text(
