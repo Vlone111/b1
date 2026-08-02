@@ -63,6 +63,7 @@ class WheelConfigResponse(BaseModel):
     user_balance_kopeks: int = 0
     required_balance_kopeks: int = 0
     has_subscription: bool = False
+    eligible_subscriptions: list[dict] | None = None
 
 
 class SpinAvailabilityResponse(BaseModel):
@@ -83,6 +84,7 @@ class SpinRequest(BaseModel):
     """Запрос на спин."""
 
     payment_type: WheelPaymentType
+    subscription_id: int | None = None
 
 
 class SpinResultResponse(BaseModel):

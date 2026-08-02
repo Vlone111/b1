@@ -1787,14 +1787,14 @@ async def get_target_users(db: AsyncSession, target: str) -> list:
         return [
             user
             for user in users
-            if user.subscription and user.subscription.is_active and not user.subscription.is_trial
+            if any(s.is_active and not s.is_trial for s in (getattr(user, 'subscriptions', None) or []))
         ]
 
     if target == 'trial':
-        return [user for user in users if user.subscription and user.subscription.is_trial]
+        return [user for user in users if any(s.is_trial for s in (getattr(user, 'subscriptions', None) or []))]
 
     if target == 'no':
-        return [user for user in users if not user.subscription or not user.subscription.is_active]
+        return [user for user in users if not any(s.is_active for s in (getattr(user, 'subscriptions', None) or []))]
 
     if target == 'expiring':
         expiring_subs = await get_expiring_subscriptions(db, 3)
@@ -1808,14 +1808,11 @@ async def get_target_users(db: AsyncSession, target: str) -> list:
         }
         expired_users = []
         for user in users:
-            subscription = user.subscription
-            if subscription:
-                if subscription.status in expired_statuses:
+            subs = getattr(user, 'subscriptions', None) or []
+            if subs:
+                has_expired = any(s.status in expired_statuses or (s.end_date <= now and not s.is_active) for s in subs)
+                if has_expired:
                     expired_users.append(user)
-                    continue
-                if subscription.end_date <= now and not subscription.is_active:
-                    expired_users.append(user)
-                    continue
             elif user.has_had_paid_subscription:
                 expired_users.append(user)
         return expired_users
@@ -1824,27 +1821,27 @@ async def get_target_users(db: AsyncSession, target: str) -> list:
         return [
             user
             for user in users
-            if user.subscription
-            and not user.subscription.is_trial
-            and user.subscription.is_active
-            and (user.subscription.traffic_used_gb or 0) <= 0
+            if any(
+                not s.is_trial and s.is_active and (s.traffic_used_gb or 0) <= 0
+                for s in (getattr(user, 'subscriptions', None) or [])
+            )
         ]
 
     if target == 'trial_zero':
         return [
             user
             for user in users
-            if user.subscription
-            and user.subscription.is_trial
-            and user.subscription.is_active
-            and (user.subscription.traffic_used_gb or 0) <= 0
+            if any(
+                s.is_trial and s.is_active and (s.traffic_used_gb or 0) <= 0
+                for s in (getattr(user, 'subscriptions', None) or [])
+            )
         ]
 
     if target == 'zero':
         return [
             user
             for user in users
-            if user.subscription and user.subscription.is_active and (user.subscription.traffic_used_gb or 0) <= 0
+            if any(s.is_active and (s.traffic_used_gb or 0) <= 0 for s in (getattr(user, 'subscriptions', None) or []))
         ]
 
     if target == 'expiring_subscribers':
@@ -1859,14 +1856,11 @@ async def get_target_users(db: AsyncSession, target: str) -> list:
         }
         expired_users = []
         for user in users:
-            subscription = user.subscription
-            if subscription:
-                if subscription.status in expired_statuses:
+            subs = getattr(user, 'subscriptions', None) or []
+            if subs:
+                has_expired = any(s.status in expired_statuses or (s.end_date <= now and not s.is_active) for s in subs)
+                if has_expired:
                     expired_users.append(user)
-                    continue
-                if subscription.end_date <= now and not subscription.is_active:
-                    expired_users.append(user)
-                    continue
             elif user.has_had_paid_subscription:
                 expired_users.append(user)
         return expired_users
@@ -1875,7 +1869,7 @@ async def get_target_users(db: AsyncSession, target: str) -> list:
         return [
             user
             for user in users
-            if user.subscription and user.subscription.status == SubscriptionStatus.DISABLED.value
+            if any(s.status == SubscriptionStatus.DISABLED.value for s in (getattr(user, 'subscriptions', None) or []))
         ]
 
     if target == 'trial_ending':
@@ -1884,10 +1878,10 @@ async def get_target_users(db: AsyncSession, target: str) -> list:
         return [
             user
             for user in users
-            if user.subscription
-            and user.subscription.is_trial
-            and user.subscription.is_active
-            and user.subscription.end_date <= in_3_days
+            if any(
+                s.is_trial and s.is_active and s.end_date <= in_3_days
+                for s in (getattr(user, 'subscriptions', None) or [])
+            )
         ]
 
     if target == 'trial_expired':
@@ -1895,7 +1889,7 @@ async def get_target_users(db: AsyncSession, target: str) -> list:
         return [
             user
             for user in users
-            if user.subscription and user.subscription.is_trial and user.subscription.end_date <= now
+            if any(s.is_trial and s.end_date <= now for s in (getattr(user, 'subscriptions', None) or []))
         ]
 
     if target == 'autopay_failed':
@@ -1940,7 +1934,7 @@ async def get_target_users(db: AsyncSession, target: str) -> list:
         return [
             user
             for user in users
-            if user.subscription and user.subscription.is_active and user.subscription.tariff_id == tariff_id
+            if any(s.is_active and s.tariff_id == tariff_id for s in (getattr(user, 'subscriptions', None) or []))
         ]
 
     if target == 'lapsed':
