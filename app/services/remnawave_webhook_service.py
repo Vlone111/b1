@@ -16,7 +16,7 @@ from typing import Any
 import structlog
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from sqlalchemy import delete
+from sqlalchemy import delete, inspect as sa_inspect
 from sqlalchemy.exc import PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.exc import StaleDataError
@@ -27,6 +27,7 @@ from app.database.crud.subscription import (
     decrement_subscription_server_counts,
     expire_subscription,
     get_subscription_by_user_id,
+    is_recently_updated_by_webhook,
     reactivate_subscription,
     update_subscription_usage,
 )
@@ -124,11 +125,14 @@ _ADMIN_NODE_CONNECTION_EVENTS = frozenset({'node.connection_lost', 'node.connect
 class RemnaWaveWebhookService:
     """Processes incoming webhooks from RemnaWave backend."""
 
-    # In-memory guard: tracks recent panel recreations per subscription_id.
-    # Prevents unbounded user.deleted → recreate → user.deleted loops.
-    # Key: subscription_id, Value: datetime of last recreation attempt.
+    # NOTE: In-memory guards. Only correct with a single-worker deployment.
+    # For multi-worker setups, move to Redis or another shared store.
     _recent_recreations: dict[int, datetime] = {}
     _RECREATION_GUARD_SECONDS: int = 120  # 2-minute cooldown
+    _intentional_panel_deletions_by_uuid: dict[str, datetime] = {}
+    _intentional_panel_deletions_by_telegram_id: dict[int, datetime] = {}
+    _INTENTIONAL_PANEL_DELETION_GUARD_SECONDS: int = 300
+    _MAX_INTENTIONAL_ENTRIES: int = 10_000
 
     def __init__(self, bot: Bot) -> None:
         self.bot = bot
@@ -168,6 +172,87 @@ class RemnaWaveWebhookService:
     def is_admin_event(self, event_name: str) -> bool:
         """Check if the event is admin-scoped (no DB session needed)."""
         return event_name in self._admin_handlers
+
+    @classmethod
+    def _prune_intentional_panel_deletions(cls) -> None:
+        if not cls._intentional_panel_deletions_by_uuid and not cls._intentional_panel_deletions_by_telegram_id:
+            return
+
+        now = datetime.now(UTC)
+        uuid_keys = [
+            key
+            for key, created_at in cls._intentional_panel_deletions_by_uuid.items()
+            if (now - created_at).total_seconds() >= cls._INTENTIONAL_PANEL_DELETION_GUARD_SECONDS
+        ]
+        for key in uuid_keys:
+            del cls._intentional_panel_deletions_by_uuid[key]
+
+        telegram_keys = [
+            key
+            for key, created_at in cls._intentional_panel_deletions_by_telegram_id.items()
+            if (now - created_at).total_seconds() >= cls._INTENTIONAL_PANEL_DELETION_GUARD_SECONDS
+        ]
+        for key in telegram_keys:
+            del cls._intentional_panel_deletions_by_telegram_id[key]
+
+    @classmethod
+    def mark_intentional_panel_deletion(
+        cls,
+        *,
+        panel_uuids: list[str] | None = None,
+        telegram_id: int | None = None,
+    ) -> None:
+        cls._prune_intentional_panel_deletions()
+
+        total = len(cls._intentional_panel_deletions_by_uuid) + len(cls._intentional_panel_deletions_by_telegram_id)
+        if total >= cls._MAX_INTENTIONAL_ENTRIES:
+            logger.warning('Intentional deletion guard at capacity, skipping', total=total)
+            return
+
+        now = datetime.now(UTC)
+
+        for panel_uuid in panel_uuids or []:
+            normalized = (panel_uuid or '').strip()
+            if normalized:
+                cls._intentional_panel_deletions_by_uuid[normalized] = now
+
+        if telegram_id is not None:
+            cls._intentional_panel_deletions_by_telegram_id[int(telegram_id)] = now
+
+    @classmethod
+    def _is_intentional_panel_deletion_event(cls, data: dict[str, Any]) -> bool:
+        cls._prune_intentional_panel_deletions()
+
+        candidate_uuids: list[str] = []
+        candidate_telegram_ids: list[int] = []
+
+        for value in (data.get('uuid'), data.get('userUuid')):
+            if value:
+                candidate_uuids.append(str(value).strip())
+
+        telegram_id = data.get('telegramId')
+        if telegram_id:
+            try:
+                candidate_telegram_ids.append(int(telegram_id))
+            except (TypeError, ValueError):
+                pass
+
+        nested_user = data.get('user')
+        if isinstance(nested_user, dict):
+            nested_uuid = nested_user.get('uuid')
+            if nested_uuid:
+                candidate_uuids.append(str(nested_uuid).strip())
+
+            nested_tid = nested_user.get('telegramId')
+            if nested_tid:
+                try:
+                    candidate_telegram_ids.append(int(nested_tid))
+                except (TypeError, ValueError):
+                    pass
+
+        return any(uid in cls._intentional_panel_deletions_by_uuid for uid in candidate_uuids) or any(
+            tid in cls._intentional_panel_deletions_by_telegram_id for tid in candidate_telegram_ids
+        )
 
     async def process_event(self, db: AsyncSession | None, event_name: str, data: dict) -> bool:
         """Route event to the appropriate handler.
@@ -583,8 +668,12 @@ class RemnaWaveWebhookService:
             format_kwargs = {}
         if 'tariff_label' not in format_kwargs:
             tariff_label = ''
-            if settings.is_multi_tariff_enabled() and subscription and getattr(subscription, 'tariff', None):
-                tariff_label = f' «{subscription.tariff.name}»'
+            if settings.is_multi_tariff_enabled() and subscription:
+                # Access tariff only if already eagerly loaded to avoid
+                # MissingGreenlet from lazy loading in async context
+                loaded_tariff = sa_inspect(subscription).dict.get('tariff')
+                if loaded_tariff is not None:
+                    tariff_label = f' «{loaded_tariff.name}»'
             format_kwargs['tariff_label'] = tariff_label
 
         if format_kwargs:
@@ -647,7 +736,7 @@ class RemnaWaveWebhookService:
         # Суточные подписки управляются DailySubscriptionService.
         # Remnawave может прислать user.expired если sync не дошёл (старый end_date),
         # но локально подписка ещё жива — не экспайрим её.
-        tariff = getattr(subscription, 'tariff', None)
+        tariff = sa_inspect(subscription).dict.get('tariff')
         is_active_daily = (
             tariff is not None
             and getattr(tariff, 'is_daily', False)
@@ -686,7 +775,7 @@ class RemnaWaveWebhookService:
             return
 
         # Суточные подписки управляются DailySubscriptionService — не деактивируем
-        tariff = getattr(subscription, 'tariff', None)
+        tariff = sa_inspect(subscription).dict.get('tariff')
         is_active_daily = (
             tariff is not None
             and getattr(tariff, 'is_daily', False)
@@ -695,6 +784,18 @@ class RemnaWaveWebhookService:
         if is_active_daily:
             logger.info(
                 'Webhook: пропуск disabled для суточной подписки',
+                subscription_id=subscription.id,
+                user_id=user.id,
+            )
+            self._stamp_webhook_update(subscription)
+            await db.commit()
+            return
+
+        # Защита от echo-webhook: если подписка была недавно реактивирована
+        # (канал-реподписка ставит last_webhook_update_at), пропускаем
+        if subscription.status == SubscriptionStatus.ACTIVE.value and is_recently_updated_by_webhook(subscription):
+            logger.info(
+                'Webhook user.disabled: подписка недавно реактивирована, пропуск echo-webhook',
                 subscription_id=subscription.id,
                 user_id=user.id,
             )
@@ -944,10 +1045,22 @@ class RemnaWaveWebhookService:
                     logger.error('Webhook: user not found after rollback', user_id=user_id)
                     return
 
+        # Intentional admin deletion: cleanup runs (fields cleared above), but skip re-creation
+        is_intentional = self._is_intentional_panel_deletion_event(data)
+        if is_intentional:
+            logger.info(
+                'Webhook user.deleted: intentional admin deletion, cleanup done, skipping re-creation',
+                sub_id=sub_id,
+                user_id=user_id,
+            )
+
         # Check if subscription has a future end_date — likely a spurious user.deleted
         # (e.g., RemnaWave sends user.deleted during panel resync when modifying another user)
         subscription_still_valid = (
-            subscription is not None and subscription.end_date is not None and subscription.end_date > datetime.now(UTC)
+            not is_intentional
+            and subscription is not None
+            and subscription.end_date is not None
+            and subscription.end_date > datetime.now(UTC)
         )
 
         if subscription:
